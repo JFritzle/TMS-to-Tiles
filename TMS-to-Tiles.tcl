@@ -515,7 +515,7 @@ font create title_font {*}[font configure TkDefaultFont] \
 label .title -text $title -font title_font -fg blue
 pack .title -expand 1 -fill x
 
-set github "https://github.com/JFritzle/Mapsforge-to-Tiles"
+set github "https://github.com/JFritzle/TMS-to-Tiles"
 tooltip .title "$github"
 if {$tcl_platform(platform) == "windows"} {
   set script "exec cmd.exe /C START {} $github"
