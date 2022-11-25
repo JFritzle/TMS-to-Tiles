@@ -1814,27 +1814,25 @@ proc process_start {command process} {
   namespace eval $process {}
   namespace upvar $process fd fd pid pid exe exe
   set ${process}::command $command
+  set ${process}::cr ""
 
   set fd $result
   fconfigure $fd -blocking 0 -buffering line
 
   set pid [pid $fd]
   set exe [file tail [lindex $command 0]]
-
-  set mark "\\\[[string toupper $process]\\\]"
-  set ${process}::cr ""
-
-  set    script "if {\[eof $fd\]} {"
-  append script "  close $fd;"
-  append script "  namespace delete $process;"
-  append script "  set ::action 0;"
-  append script "  puti \"[mc m52 $pid $exe]\";"
-  append script "} elseif {\[gets $fd line\] >= 0} {"
-  append script "  puts \"\[set ${process}::cr\]$mark \$line\";"
-  append script "}"
-  fileevent $fd readable $script
-
   puti "[mc m51 $pid $exe]"
+
+  append mark \$${process}::cr {\[} [string toupper $process] {\]}
+  fileevent $fd readable "
+	if {\[eof $fd\]} {
+	  close $fd;
+	  namespace delete $process;
+	  set ::action 0;
+	  puti \"[mc m52 $pid $exe]\";
+	} else {
+	  while {\[gets $fd line\] >= 0} {puts \"$mark \$line\"};
+	}"
 
 }
 
@@ -2075,12 +2073,12 @@ proc run_render_job {srv} {
     }
     incr ytile
   }
-  file delete -force {*}$clean $composed.$suffix $composed.log
 
   # Start logging
 
   set log [expr {$srv == "srv"}]
   if {$log} {
+    file delete -force {*}$clean $composed.$suffix $composed.log
     set logfile $composed.log
     set logsep [string repeat - 100]
     set logfmt "%-17s : %s"
@@ -2278,7 +2276,7 @@ proc run_render_job {srv} {
 	  if {$log} {
 	    if {!$rc} {puts $fdlog "-> Success, processed"} \
 	    else {puts $fdlog "-> Failure, convert error: $result"}
-          }
+	  }
 	} else {
 	  file rename -force $file $tile
 	  incr valid
