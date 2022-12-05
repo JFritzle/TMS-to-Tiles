@@ -32,6 +32,7 @@ package require msgcat
 package require tooltip
 package require http
 package require uri
+package require fileutil
 
 interp alias {} ::mc {} ::msgcat::mc
 interp alias {} ::messagebox {} ::tk::MessageBox
@@ -95,7 +96,7 @@ if {[file exist $file]} {
 # but preserve commands if resolved by search path
 
 # - commands
-set cmds {java_cmd convert_cmd}
+set cmds {java_cmd curl_cmd gm_cmd}
 # - commands + folders + files
 set list [concat $cmds ini_folder server_jar]
 
@@ -144,6 +145,7 @@ set tcp.maxconn 256
 set threads.min 0
 set threads.max 8
 
+set use.curl 0
 set tiles.folder $cwd
 set tiles.abort 0
 # For compatibility only:
@@ -203,6 +205,7 @@ bind Checkbutton <Return> {%W invoke}
 foreach {name value} {
 *Button.borderWidth 2
 *Button.highlightThickness 1
+*Button.padX 0
 *Button.padY 0
 *Button.takeFocus 1
 *Checkbutton.anchor w
@@ -388,28 +391,6 @@ if {$rc} {
 #::http::register https 443 [list ::tls::socket -autoservername true]
 ::http::register https 443 ::tls::socket
 
-# Follow URL relocation
-
-proc ::http::followurl {token args} {
-  array set meta [set ${token}(meta)]
-  foreach item [array names meta -regexp "***:(?i)^location$"] \
-	{set url_new [set meta($item)]}
-  if {[info exists url_new]} {
-    set url_old [set ${token}(url)]
-    array set uri_old [::uri::split $url_old]
-    array set uri_new [::uri::split $url_new]
-    if {$uri_new(host) == ""} {
-      set uri_new(scheme) $uri_old(scheme)
-      set uri_new(host) $uri_old(host)
-      set uri_new(port) $uri_old(port)
-    }
-    set url_new [eval ::uri::join [array get uri_new]]
-    ::http::cleanup $token
-    set token [::http::geturl $url_new {*}$args]
-  }
-  return $token
-}
-
 # Check commands & folders
 
 foreach item {java_cmd} {
@@ -466,45 +447,65 @@ catch "close $fd"
 if {$server_version < 1704 } \
 	{error_message [mc e07 $server_string 0.17.4] exit}
 
-# Looking for installed ImageMagick's tool "convert"
+# Looking for installed URL tool "curl"
 
-set convert ""
-if {[info exists convert_cmd] && $convert_cmd != ""} {
-  set convert $convert_cmd
+set curl ""
+if {[info exists curl_cmd] && $curl_cmd != ""} {
+  set curl [join [auto_execok $curl_cmd]]
 }
-if {$convert == ""} {
+if {$curl == ""} {
   if {$::tcl_platform(os) == "Windows NT"} {
-    set convert [lindex [glob -nocomplain -type f \
-	"[file normalize $env(ProgramFiles)]*/ImageMagick*/convert.exe"] 0]
+    set curl "[file normalize $env(SystemRoot)]/System32/curl.exe"
   } elseif {$::tcl_platform(os) == "Linux"} {
-    set convert [join [auto_execok convert]]
+    set curl [join [auto_execok curl]]
   }
 }
-if {$convert == ""} {error_message [mc e09] exit}
+if {$curl != ""} {
+  catch "exec {$curl} -V" data
+  set string [lindex [split $data] 1]
+  set curl_version [split $string .]
+  set curl_version [expr 1000*[lindex $curl_version 0]+[lindex $curl_version 1]]
+}
 
-# Relax some limits of ImageMagick's policy.xml file
-set fd [open "$ini_folder/policy.xml" w]
-puts $fd {?xml version="1.0" encoding="UTF-8"?>}
-puts $fd {<!DOCTYPE policymap [}
-puts $fd {  <!ELEMENT policymap (policy)*>}
-puts $fd {  <!ATTLIST policymap xmlns CDATA #FIXED ''>}
-puts $fd {  <!ELEMENT policy EMPTY>}
-puts $fd {  <!ATTLIST policy xmlns CDATA #FIXED '' domain NMTOKEN #REQUIRED}
-puts $fd {    name NMTOKEN #IMPLIED pattern CDATA #IMPLIED}
-puts $fd {    rights NMTOKEN #IMPLIED}
-puts $fd {    stealth NMTOKEN #IMPLIED value CDATA #IMPLIED>}
-puts $fd {]>}
-puts $fd {<policymap>}
-puts $fd {  <policy domain="resource" name="memory" value="2GiB"/>}
-puts $fd {  <policy domain="resource" name="map" value="4GiB"/>}
-puts $fd {  <policy domain="resource" name="width" value="10MP"/>}
-puts $fd {  <policy domain="resource" name="height" value="10MP"/>}
-puts $fd {  <policy domain="resource" name="area" value="1GB"/>}
-puts $fd {  <policy domain="resource" name="disk" value=""/>}
-puts $fd {  <policy domain="resource" name="file" value="8192"/>}
-puts $fd {</policymap>}
-close $fd
-set env(MAGICK_CONFIGURE_PATH) $ini_folder
+# Looking for installed GraphicsMagick's tool "gm"
+
+set gm ""
+if {[info exists gm_cmd] && $gm_cmd != ""} {
+  set gm [join [auto_execok $gm_cmd]]
+}
+if {$gm == ""} {
+  if {$::tcl_platform(os) == "Windows NT"} {
+    foreach var {"ProgramFiles" "ProgramFiles(x86)"} {
+      if {![info exists env($var)]} {continue}
+      set val $env($var)
+      set gm [lindex [glob -nocomplain -type f \
+	"[file normalize $val]/GraphicsMagick*/gm.exe"] end]
+      if {$gm != ""} {break}
+    }
+  } elseif {$::tcl_platform(os) == "Linux"} {
+    set gm [join [auto_execok gm]]
+  }
+}
+if {$gm == ""} {error_message [mc e09] exit}
+
+# Set resource limits of GraphicsMagick
+# Resource value "-1" is equivalent to "unlimited"
+# See http://www.graphicsmagick.org/GraphicsMagick.html for more information
+
+# Maximum amount of disk space allowed for use by the pixel cache
+set env(MAGICK_LIMIT_DISK)	"-1"
+# Maximum number of open files
+set env(MAGICK_LIMIT_FILES)	"16384"
+# Maximum size of a memory mapped file allocation
+set env(MAGICK_LIMIT_MAP)	"4GiB"
+# Maximum amount of memory to allocate from the heap
+set env(MAGICK_LIMIT_MEMORY)	"2GiB"
+# Maximum number of total pixels (rows x colums) to allow for any image
+set env(MAGICK_LIMIT_PIXELS)	"1GiB"
+# Maximum pixel width of an image read, or created
+set env(MAGICK_LIMIT_WIDTH)	"10MiP"
+# Maximum pixel height of an image read, or created
+set env(MAGICK_LIMIT_HEIGHT)	"10MiP"
 
 # --- Begin of main window left column
 
@@ -778,8 +779,7 @@ foreach widget {.shading.simple_value1 .shading.simple_value2 \
 
 # Save hillshading settings to folder ini_folder
 
-proc save_shading_settings {} {
-uplevel #0 {
+proc save_shading_settings {} {uplevel #0 {
   set fd [open "$ini_folder/hillshading.ini" w]
   fconfigure $fd -buffering full
   foreach name {shading.onoff shading.algorithm \
@@ -1231,19 +1231,37 @@ proc test_server_url {} {
   set test_result {}
   lappend test_result [list [mc l182] $url]
 
-  set rc [catch "::http::geturl $url -binary 1" token]
-  if {$rc} {
-    error_message "$url\n$token" return
-    return
-  }
+  # Relocation loop
+  while {1} {
+    set rc [catch "::http::geturl $url -binary 1" token]
+    if {$rc} {
+      error_message "$url\n$token" return
+      return
+    }
+    set code [::http::ncode $token]
 
-  if {[string match {30[12378]} [::http::ncode $token]]} {
-    set token [::http::followurl $token -binary 1]
-    set url [set ${token}(url)]
+    if {![string match {30[12378]} $code]} {break}
+
+    # Replace URL by relocation URL
+    lmap {name value} [set ${token}(meta)] {
+      if {![regexp -nocase $name "^location$"]} {continue}
+      set url_new $value
+      break
+    }
+    if {![info exists url_new]} {break}
+    ::http::cleanup $token
+    array set uri_old [::uri::split $url]
+    array set uri_new [::uri::split $url_new]
+    if {$uri_new(host) == ""} {
+      set uri_new(scheme) $uri_old(scheme)
+      set uri_new(host) $uri_old(host)
+      set uri_new(port) $uri_old(port)
+    }
+    set url [eval ::uri::join [array get uri_new]]
+    unset url_new uri_new uri_old
     lappend test_result [list [mc l183] $url]
   }
 
-  set ncode [::http::ncode $token]
   lappend test_result [list "HTTP status" [::http::code $token]]
   array set meta [set ${token}(meta)]
   foreach item [lsort [array names meta]] {
@@ -1258,23 +1276,15 @@ proc test_server_url {} {
   }
 
   if {[string first "image/" $type] == 0} {
-    set fd [file tempfile tempimg]
+    set fd [file tempfile tmpimg]
     fconfigure $fd -translation binary -buffering none
     puts -nonewline $fd [::http::data $token]
     close $fd
-    set command [list $::convert $tempimg\[0\] png:$tempimg]
-    catch "exec $command"
-    set tile_image [image create photo tile_image -file $tempimg]
-    regsub {convert} $::convert {identify} identify
-    if {[auto_execok $identify] == ""} {
-      set wdt [image width  $tile_image]
-      set hgt [image height $tile_image]
-      set tile_format "[mc l186]: ${wdt}x${hgt} [mc l187]"
-    } else {
-      catch "exec {$identify} -format {[mc l186]: %wx%h [mc l187],\
-	[mc l188]: %z-bit, [mc l189]: %\[channels\]} $tempimg" tile_format
-    }
-    file delete $tempimg
+    exec $::gm convert $tmpimg\[0\] $tmpimg.png
+    set tile_image [image create photo tile_image -file $tmpimg.png]
+    catch "exec {$::gm} identify -format {[mc l185]: %m, [mc l186]: %wx%h\
+	[mc l187], [mc l188]: %q-bit, [mc l189]: %r} $tmpimg" tile_format
+    file delete $tmpimg $tmpimg.png
   }
   ::http::cleanup $token
 
@@ -1307,8 +1317,7 @@ proc test_server_url {} {
 
 # Update global settings to folder ini_folder
 
-proc save_global_settings {} {
-uplevel #0 {
+proc save_global_settings {} {uplevel #0 {
   array set ini_settings {}
   set fd [open "$ini_folder/global.ini" r]
   while {[gets $fd line] != -1} {
@@ -1337,8 +1346,7 @@ uplevel #0 {
 
 # Save TMS server settings to folder ini_folder
 
-proc save_tmsserver_settings {} {
-uplevel #0 {
+proc save_tmsserver_settings {} {uplevel #0 {
   set tms.x [lmap i [lsort -integer [array names tms.ax]] {set tms.ax($i)}]
   set tms.y [lmap i [lsort -integer [array names tms.ay]] {set tms.ay($i)}]
   set fd [open "$ini_folder/tmsserver.ini" w]
@@ -1351,8 +1359,7 @@ uplevel #0 {
 
 # Save tiles settings to folder ini_folder
 
-proc save_tiles_settings {} {
-uplevel #0 {
+proc save_tiles_settings {} {uplevel #0 {
   set fd [open "$ini_folder/tiles.ini" w]
   fconfigure $fd -buffering full
   set xyrange.mode [.xyrange_values current]
@@ -1361,7 +1368,7 @@ uplevel #0 {
 	  coord.xmin coord.xmax coord.ymin coord.ymax \
 	  tiles.write tiles.abort tiles.compose tiles.keep composed.show \
 	  tcp.interface tcp.port shading.layer \
-	  http.wait http.keep} {
+	  use.curl http.wait http.keep} {
     puts $fd "$name=[set $name]"
   }
   close $fd
@@ -1622,6 +1629,16 @@ pack .tiles_prefix_value -in .tiles_prefix -side right
   return [regexp {^(\w+[-.]?)*$} %P]
 }
 
+# Use "curl" for download
+
+checkbutton .use_curl -text [mc c30] -variable use.curl
+pack .use_curl -in .r -expand 1 -fill x
+if {$curl == ""} {
+  set use.curl 0
+  .use_curl configure -state disabled
+  tooltip .use_curl [mc c30t]
+}
+
 # Abort HTTP requests at error condition
 
 checkbutton .tiles_abort -text [mc c31] \
@@ -1665,8 +1682,20 @@ button .buttons.cancel -text [mc b02] -width 12 -command {set action 0}
 pack .buttons -in .r -ipady 5
 pack .buttons.continue .buttons.cancel -side left
 
-bind .buttons.continue <ButtonPress-1> {tk busy .buttons; %W invoke}
+bind .buttons.continue <ButtonPress-1> {busy_state 1}
 focus .buttons.continue
+
+proc busy_state {state} {
+  if {$state} {
+    tk busy hold .buttons
+    .buttons.continue invoke
+    .buttons.continue configure -state disabled -relief sunken
+  } else {
+    .buttons.continue configure -state normal -relief raised
+    tk busy forget .buttons
+  }
+  update idletasks
+}
 
 # Show/hide output console window (show with saved geometry)
 
@@ -1781,19 +1810,6 @@ proc selection_ok {} {
     return 0
   }
   return 1
-}
-
-# Wait for complete selection or finish
-
-while {1} {
-  vwait action
-  if {$action == 0} {
-    foreach item {global tmsserver shading tiles} {save_${item}_settings}
-    exit
-  }
-  unset action
-  if {[selection_ok]} {break}
-  tk busy forget .buttons
 }
 
 # Process start procedure
@@ -1974,31 +1990,199 @@ proc srv_start {srv} {
   update
 
   if {![process_running $srv]} {error_message [mc m55 $name] return}
-
-  # Prepend carriage return to server output
   set ${srv}::cr "\r"
 
 }
 
 # Run render job
 
-proc geturl_handler {socket token} {
+proc geturl_handler {file socket token} {
   upvar #0 $token state
   set size 0
   if {[string first "image/" [set state(type)]] == 0} {
-    set fd [file tempfile tempfile [pid].tile..TMP]
+    set fd [open $file w+]
     fconfigure $fd -translation binary -buffering none
     while {![eof $socket]} {incr size [chan copy $socket $fd]}
     close $fd
-    set state(file) $tempfile
   } else {
     while {![eof $socket]} {incr size [string length [read -nonewline $socket]]}
-    set state(file) ""
   }
   return $size
 }
 
-proc run_render_job {srv} {
+# Download tiles with "curl"
+
+proc download_with_curl {} {uplevel 1 {
+
+  set url $url_pattern
+  regsub "\\$?{x}" $url "\[$xmin-$xmax\]" url
+  regsub "\\$?{y}" $url "\[$ymin-$ymax\]" url
+  regsub "\\$?{z}" $url "$zoom" url
+
+  # Download tiles from server
+
+  set curl_args {}
+  lappend curl_args -qsvkL --http1.1
+  lappend curl_args --retry 0
+  if {${::tiles.abort}} \
+	{lappend curl_args --fail-early}
+  if {$::curl_version >= 7066} \
+	{lappend curl_args --parallel --parallel-max 4}
+  lappend curl_args -o ${prefix}$zoom.#1.#2.$suffix
+
+  set cmd [list $::curl {*}$curl_args $url]
+
+  set start [clock milliseconds]
+  set valid 0
+  set count 0
+
+  if {$::tcl_platform(os) == "Windows NT"} {
+    set rc [catch {open "| $cmd 2>@1" r} result]
+  } elseif {$::tcl_platform(os) == "Linux"} {
+    set rc [catch {open "| $cmd 2>@ stdout" r} result]
+  }
+
+  if {$rc} {
+    set stop [clock milliseconds]
+    error_message "Download $url:\n$result" return
+    puts $fdlog [format $logfmt "URL" $url]
+    puts $fdlog [format $logfmt "curl error" $result]
+    puts $fdlog $logsep
+    return 1
+  }
+
+  set fd $result
+  fconfigure $fd -blocking 0 -buffering line -translation binary
+
+  if {$srv == "srv"} {
+    set echo "if {\[string range \$line 0 4\] == {> GET}} {puts \\r\$line};"
+  } else {
+    set echo ""
+  }
+
+  fileevent $fd readable "
+	if {\[eof $fd\]} {
+	  set ::curl_rc \[catch {close $fd} ::curl_result];
+	} else {
+	  while {\[gets $fd line\] >= 0} {
+	    set line \[string trimright \$line \\r\];
+	    $echo
+	    puts $fdlog \$line;
+	  };
+	}"
+
+  vwait ::curl_rc
+  set stop [clock milliseconds]
+  lassign [list $::curl_rc $::curl_result] rc result
+  unset ::curl_rc ::curl_result
+  if {$rc} {return 1}
+
+  # Count successfully downloded files
+
+  set ytile $ymin
+  while {$ytile <= $ymax} {
+    set xtile $xmin
+    while {$xtile <= $xmax} {
+      incr count
+      set tile ${prefix}$zoom.$xtile.$ytile.$suffix
+      if {[file exists $tile]} {incr valid}
+      incr xtile
+    }
+    incr ytile
+  }
+  return 0
+
+}}
+
+# Download tiles with "http"
+
+proc download_with_http {} {uplevel 1 {
+
+  set start [clock milliseconds]
+  set count 0
+  set valid 0
+  set reloc 0
+  set error 0
+  set ytile $ymin
+  while {$ytile <= $ymax} {
+    if {$error && ${::tiles.abort}} {break}
+    set xtile $xmin
+    while {$xtile <= $xmax} {
+      if {$error && ${::tiles.abort}} {break}
+      set url $url_pattern
+      regsub "\\$?{x}" $url $xtile url
+      regsub "\\$?{y}" $url $ytile url
+      regsub "\\$?{z}" $url $zoom url
+      set file $prefix$zoom.$xtile.$ytile.$suffix
+
+      # Relocation loop
+      while {1} {
+	if {$srv == "srv"} {puts "\r> GET $url"}
+	set rc [catch "::http::geturl $url -keepalive 1 \
+	  -binary 1 -handler {geturl_handler $file}" result]
+	if {$rc} {
+	  set stop [clock milliseconds]
+	  error_message "Download $url:\n$result" return
+	  puts $fdlog [format $logfmt "URL" $url]
+	  puts $fdlog [format $logfmt "HTTP error" $result]
+	  puts $fdlog $logsep
+	  return 1
+	}
+	set token $result
+
+	puts $fdlog [format $logfmt "URL" $url]
+	puts $fdlog [format $logfmt "HTTP transaction" [::http::status $token]]
+	puts $fdlog [format $logfmt "HTTP error" [::http::error $token]]
+	puts $fdlog [format $logfmt "HTTP status" [::http::code $token]]
+	array set meta [set ${token}(meta)]
+	foreach item [lsort [array names meta]] {
+	  puts $fdlog [format $logfmt $item $meta($item)]
+	}
+	unset meta
+	puts $fdlog $logsep
+
+	set code [::http::ncode $token]
+	if {![string match {30[12378]} $code]} {break}
+	incr reloc
+
+	# Replace URL by relocation URL
+	lmap {name value} [set ${token}(meta)] {
+	  if {![regexp -nocase $name "^location$"]} {continue}
+	  set url_new $value
+	  break
+	}
+	if {![info exists url_new]} {break}
+	::http::cleanup $token
+	array set uri_old [::uri::split $url]
+	array set uri_new [::uri::split $url_new]
+	if {$uri_new(host) == ""} {
+	  set uri_new(scheme) $uri_old(scheme)
+	  set uri_new(host) $uri_old(host)
+	  set uri_new(port) $uri_old(port)
+	}
+	set url [eval ::uri::join [array get uri_new]]
+	unset url_new uri_new uri_old
+      }
+
+      incr count
+      set size [::http::size $token]
+      ::http::cleanup $token
+      unset token
+      if {($code == 200 || $code == 404) && $size > 0} {
+	incr valid
+      } else {
+	incr error
+      }
+      incr xtile
+    }
+    incr ytile
+  }
+  set stop [clock milliseconds]
+  return 0
+
+}}
+
+proc run_render_job {} {
 
   foreach item {xmin xmax ymin ymax} {
     upvar ::tiles.$item $item
@@ -2028,422 +2212,379 @@ proc run_render_job {srv} {
   # Confirm if more than threshold tiles
 
   set threshold 100
-  if {$total > $threshold && $srv == "srv"} {
+  if {$total > $threshold} {
     if {[messagebox -parent . -title $::title -icon question -type yesno \
 	-default no -message "$text\n[mc m69 $threshold]"] != "yes"} {return 1}
   }
-
-  # Url
-
-  if {$srv == "srv"} {
-    set url_pattern ${::tms.url}
-  } else {
-    set url_pattern "http://127.0.0.1:${::tcp.port}/{z}/{x}/{y}.png"
-    if {$::tile_size != 256} \
-      {append url_pattern "?tileRenderSize=${::tile_size}"}
-  }
-
-  puts "[mc m70 $url_pattern] ...\n"
-  update
 
   # Working in tiles folder
 
   catch {cd ${::tiles.folder}}
   set folder [pwd]
-  set $::tmpdirvar $folder
+  puts "[mc m71 $folder]\n"
+  update
 
   set prefix ${::tiles.prefix}
   if {$prefix != "" && ![regexp {[-.]+$} $prefix]} {append prefix "."}
-
-  if {$srv == "srv"} {set suffix "png"}
-  if {$srv == "ovl"} {set suffix "ovl.png"}
+  set tmppfx [pid].tile
 
   set composed $prefix$zoom.$xmin.$ymin-$zoom.$xmax.$ymax
 
-  # First remove existing tiles
+  # Open log file
 
-  set clean {}
-  set ytile ${::tiles.ymin}
-  while {$ytile <= $ymax} {
-    set xtile $xmin
-    while {$xtile <= $xmax} {
-      set file $prefix$zoom.$xtile.$ytile.$suffix
-      if {[file exists $file]} {lappend clean $file}
-      incr xtile
+  set logfile $composed.log
+  set logsep [string repeat - 100]
+  set logfmt "%-17s : %s"
+  set fdlog [open $logfile w]
+  fconfigure $fdlog -buffering full
+
+  set abort 0
+  foreach srv {"srv" "ovl"} {
+
+    if {$srv == "ovl" && !${::shading.onoff}} {continue}
+    if {$srv == "ovl" && ${::shading.layer} == "onmap"} {continue}
+
+    # Url
+
+    if {$srv == "srv"} {set url_pattern ${::tms.url}}
+    if {$srv == "ovl"} {
+      set url_pattern "http://127.0.0.1:${::tcp.port}/{z}/{x}/{y}.png"
+      if {$::tile_size != 256} \
+	{append url_pattern "?tileRenderSize=${::tile_size}"}
     }
-    incr ytile
-  }
+    puts "[mc m70 $url_pattern] ...\n"
 
-  # Start logging
-
-  set log [expr {$srv == "srv"}]
-  if {$log} {
-    file delete -force {*}$clean $composed.$suffix $composed.log
-    set logfile $composed.log
-    set logsep [string repeat - 100]
-    set logfmt "%-17s : %s"
-    set fdlog [open $logfile w]
-    fconfigure $fdlog -buffering line
+    puts $fdlog $logsep
     puts $fdlog "Download tiles from URL '$url_pattern' ..."
     puts $fdlog $logsep
-  }
 
-  # Count & measure requests
-  # - HTTP response = 200 -> OK: valid tiles with map data
-  # - HTTP response = 30x -> URL relocation
-  # - HTTP response = 404 -> resource not found
-  # - HTTP response = ??? -> Error condition
+    # First remove existing tiles
 
-  set time 0
-  set start [clock milliseconds]
-  set count 0
-  set valid 0
-  set reloc 0
-  set error 0
-  set tokens {}
-  set ytile ${::tiles.ymin}
-  while {$ytile <= $ymax} {
-    if {$error} {break}
-    set xtile $xmin
-    while {$xtile <= $xmax} {
-      if {$error} {break}
-      incr count
-      set url $url_pattern
-      regsub "\\$?{x}" $url $xtile url
-      regsub "\\$?{y}" $url $ytile url
-      regsub "\\$?{z}" $url $zoom url
-      set rc [catch "::http::geturl $url \
-	-binary 1 -handler geturl_handler" result]
-      if {$rc} {
-	error_message "URL $url\n$result" return
-	if {$log} {close $fdlog}
-	set $::tmpdirvar $::tmpdirval
-	cd $::cwd
-	return 1
+    if {$srv == "srv"} {set suffix "png"}
+    if {$srv == "ovl"} {set suffix "ovl"}
+
+    set clean {}
+    set ytile $ymin
+    while {$ytile <= $ymax} {
+      set xtile $xmin
+      while {$xtile <= $xmax} {
+	set file $prefix$zoom.$xtile.$ytile.$suffix
+	lappend clean $file
+	incr xtile
       }
-      set token $result
-      set code [::http::ncode $token]
-      set size [::http::size $token]
-      if {$code == 200 && $size > 0} {
-	incr valid
-      } elseif {[string match {30[12378]} $code]} {
-	incr reloc
-      } elseif {$code != 404} {
-	if {${::tiles.abort}} {incr error}
+      incr ytile
+    }
+    lappend clean $prefix$zoom.$xmin.$ymin-$zoom.$xmax.$ymax.$suffix
+    lappend clean $composed.$suffix $composed.$srv.log
+    file delete -force {*}$clean
+
+    if {$srv == "srv"} {set suffix "img"}
+    if {$srv == "ovl"} {set suffix "ovl"}
+
+    # Start server
+
+    if {$srv == "ovl"} {
+      srv_start $srv
+      if {![process_running $srv]} {
+	set abort 1
+	break
       }
-      lappend tokens $token
-      incr xtile
-      if {$srv == "srv" && \
-	  ![expr $count%100]} {puts "\r[mc m70a $count] ..."; update}
     }
-    incr ytile
-  }
-  set stop [clock milliseconds]
-  puts "\r[mc m70b $count]"
-  incr time [expr $stop-$start]
 
-  # Log HTTP requests/responses so far
+    # Download with "curl" or "http"
 
-  if {$log} {
-    foreach token $tokens {
-      puts $fdlog [format $logfmt "URL" [set ${token}(url)]]
-      puts $fdlog [format $logfmt "HTTP transaction" [::http::status $token]]
-      puts $fdlog [format $logfmt "HTTP error" [::http::error $token]]
-      puts $fdlog [format $logfmt "HTTP status" [::http::code $token]]
-      array set meta [set ${token}(meta)]
-      foreach item [lsort [array names meta]] {
-	puts $fdlog [format $logfmt $item $meta($item)]
-      }
-      unset meta
-      puts $fdlog $logsep
-      flush $fdlog
+    if {${::use.curl}} {
+      set abort [download_with_curl]
+    } else {
+      set abort [download_with_http]
     }
-  }
 
-  # Follow each relocated URL exactly once
+    # Kill sever
 
-  if {$reloc} {
-    puts "[mc m71] ...\n"
-    update
-    set start [clock milliseconds]
-    set count 0
-    foreach token $tokens {
-      if {![string match {30[12378]} [::http::ncode $token]]} {continue}
-      incr count
-      set index [lsearch -exact $tokens $token]
-      set url_old [set ${token}(url)]
-      set token [::http::followurl $token -binary 1 -handler geturl_handler]
-      set url_new [set ${token}(url)]
-      lset tokens $index $token
-      set code [::http::ncode $token]
-      set size [::http::size $token]
-      if {$code == 200 && $size > 0} {incr valid}
-      if {![expr $count%100]} {puts "\r[mc m70a $count] ..."; update}
-    }
-    set stop [clock milliseconds]
-    incr time [expr $stop-$start]
-    puts "\r[mc m70b $count]"
-  }
+    if {$srv == "ovl"} {process_kill $srv}
 
-  # Log HTTP relocation requests/responses
+    # Report result
 
-  if {$log && $reloc} {
-    puts $fdlog "Download tiles from URL relocation ..."
-    puts $fdlog $logsep
-    foreach token $tokens {
-      puts $fdlog [format $logfmt "URL" [set ${token}(url)]]
-      puts $fdlog [format $logfmt "HTTP transaction" [::http::status $token]]
-      puts $fdlog [format $logfmt "HTTP error" [::http::error $token]]
-      puts $fdlog [format $logfmt "HTTP status" [::http::code $token]]
-      array set meta [set ${token}(meta)]
-      foreach item [lsort [array names meta]] {
-	puts $fdlog [format $logfmt $item $meta($item)]
-      }
-      unset meta
-      puts $fdlog $logsep
-      flush $fdlog
-    }
-  }
+    puts "\n[mc m72 $total $valid]"
 
-  # Report result
+    # Measure time(s)
 
-  set count [llength $tokens]
-  puts "[mc m72 $valid $total $reloc [expr $count-$valid]]"
-  if {$log} {
-    close $fdlog
-    puts "[mc m85 $folder/$logfile]"
-  }
-
-  if {$reloc} {
+    set time [expr $stop-$start]
     puts ""
-    puts "[mc m72a $url_old $url_new]"
-    puts "[mc m72b]"
+    puts "[mc m75 $time $valid]"
+    if {$valid} {puts "[mc m76 [format "%.1f" [expr $time/(1.*$valid)]]]"}
+    puts "... [mc m77]\n"
+
+    if {$valid == 0} {set abort 1}
+    if {$abort} {break}
+
   }
 
-  # Measure time(s)
+  # Download ended abnormally, see log file
 
-  puts ""
-  puts "[mc m73 $time $count]"
-  puts "[mc m74 [format "%.1f" [expr $time/(1.*$count)]]]"
-  puts "... [mc m75]\n"
-  update
-
-  if {$valid == 0} {
-    foreach token $tokens {::http::cleanup $token}
-    file delete -force {*}[glob -nocomplain -type f [pid].tile.*.TMP]
-    set $::tmpdirvar $::tmpdirval
-    cd $::cwd
-    return 1
+  close $fdlog
+  if {$abort || $valid != $total} {
+    puts "[mc m73 $folder/$logfile]"
+  } else {
+    file delete -force $logfile
   }
 
-  # Write server tiles with size > 0 as PNG files
-  # Convert image format to PNG with optional color post-processing
+  cd $::cwd
 
-  if {$log} {
-    set fdlog [open $logfile a]
-    fconfigure $fdlog -buffering line
-    puts $fdlog "Write tiles to folder '$folder' ..."
-    puts $fdlog $logsep
+  # Abort job due to error
+
+  if  {$abort} {return}
+
+  # "gm" script & batch command
+
+  set gm_script $tmppfx.gmscript.txt
+
+  proc gm_batch {script} {
+    set cmd [list $::gm batch -echo on $script]
+
+    if {$::tcl_platform(os) == "Windows NT"} {
+      set rc [catch {open "| $cmd 2>@1" r} result]
+    } elseif {$::tcl_platform(os) == "Linux"} {
+      set rc [catch {open "| $cmd 2>@ stdout" r} result]
+    }
+
+    set fd $result
+    fconfigure $fd -blocking 0 -buffering line
+    fileevent $fd readable "
+	if {\[eof $fd\]} {
+	  set ::gm_rc \[catch {close $fd} ::gm_result];
+	} else {
+	  while {\[gets $fd line\] >= 0} {puts \"\\r> \$line\"};
+	}"
+
+    vwait ::gm_rc
+    set return [list $::gm_rc $::gm_result]
+    unset ::gm_rc ::gm_result
+    return $return
   }
 
-  set convert_args {}
-  if {$srv == "srv" && (${::maps.contrast} != 0 || ${::maps.gamma} != 1.)} {
-    set black_pixel [expr 100.*${::maps.contrast}/255.]
-    lappend convert_args -level $black_pixel,100%,${::maps.gamma}
+  # Convert image format to PNG with optional color post-processing,
+
+  cd $folder
+  set $::tmpdirvar [pwd]
+
+  set text "[mc m84a]"
+
+  if {${::maps.contrast} != 0 || ${::maps.gamma} != 1.} {
+    set black_point [format %.3f [expr 100.*${::maps.contrast}/255.]] 
+    set gm_level "-level ${black_point}%,${::maps.gamma},100%"
+    append text " [mc m84b]"
+  } else {
+    set gm_level ""
   }
 
-  puts "[mc m76 $folder] ...\n"
-  set count 0
-  set valid 0
-  set error 0
-  set ytile ${::tiles.ymin}
+  puts "$text ...\n"
+  set clean {}
+  set start [clock milliseconds]
+  set fd [open $gm_script w]
+  set ytile $ymin
   while {$ytile <= $ymax} {
-    if {$error} {break}
     set xtile $xmin
     while {$xtile <= $xmax} {
-      if {$error} {break}
-      set tile $prefix$zoom.$xtile.$ytile.$suffix
-      set token [lindex $tokens $count]
-      set ncode [::http::ncode $token]
-      set type [set ${token}(type)]
-      set file [set ${token}(file)]
-      if {$log} {puts $fdlog "$tile"}
-      if {$file != "" && $ncode == 200} {
-	if {[llength $convert_args] || $type != "image/png"} {
-	  set command [list $::convert {*}$convert_args $file\[0\] $tile]
-	  set rc [catch "exec $command" result]
-	  if {!$rc} {incr valid}
-	  if {$log} {
-	    if {!$rc} {puts $fdlog "-> Success, processed"} \
-	    else {puts $fdlog "-> Failure, convert error: $result"}
-	  }
-	} else {
-	  file rename -force $file $tile
-	  incr valid
-	  if {$log} {puts $fdlog "-> Success, renamed"}
-	}
-      } else {
-	if {$log} {puts $fdlog "-> Failure, HTTP status: [::http::code $token]"}
-	if {${::tiles.abort}} {incr error}
-      }
-      incr count
-      ::http::cleanup $token
-      if {![expr $valid%100]} {puts "\r[mc m76a $valid] ..."; update}
+      set tile $prefix$zoom.$xtile.$ytile
       incr xtile
+      if {![file exists $tile.img]} {continue}
+      puts $fd "convert $tile.img $gm_level $tile.png"
+      lappend clean $tile.img
     }
     incr ytile
   }
-  file delete -force {*}[glob -nocomplain -type f [pid].tile.*.TMP]
-  puts "\r[mc m77 $valid]\n"
+  close $fd
 
-  if {$log} {
-    puts $fdlog $logsep
-    close $fdlog
+  lassign [gm_batch $gm_script] rc result
+  set stop [clock milliseconds]
+
+  if {$rc} {puts "[mc m74 $result]"}
+
+  set time [expr $stop-$start]
+  puts "[mc m85 $time]"
+  file delete -force {*}$clean $gm_script
+
+  set $::tmpdirvar $::tmpdirval
+  cd $::cwd
+
+  if {$rc} {return}
+
+  # Compose map tiles and alpha transparent hillshading overlay tiles
+
+  if {${::shading.onoff} && ${::shading.layer} == "asmap"} {
+
+  cd $folder
+  set $::tmpdirvar [pwd]
+
+  puts "[mc m84c] ...\n"
+  set clean {}
+  set start [clock milliseconds]
+  set fd [open $gm_script w]
+  set ytile $ymin
+  while {$ytile <= $ymax} {
+    set xtile $xmin
+    while {$xtile <= $xmax} {
+      set tile $prefix$zoom.$xtile.$ytile
+      incr xtile
+      if {![file exists $tile.png]} {continue}
+      if {![file exists $tile.ovl]} {continue}
+      puts $fd "composite $tile.ovl $tile.png $tile.png"
+      lappend clean $tile.ovl
+    }
+    incr ytile
+  }
+  close $fd
+
+  lassign [gm_batch $gm_script] rc result
+  set stop [clock milliseconds]
+
+  if {$rc} {puts "[mc m74 $result]"}
+
+  set time [expr $stop-$start]
+  puts "[mc m85 $time]"
+  file delete -force {*}$clean $gm_script
+
+  set $::tmpdirvar $::tmpdirval
+  cd $::cwd
+
+  if {$rc} {return}
+
+  }
+
+  if {!${::tiles.compose}} {return}
+
+  # Compose horizontal tiles to tile strips
+
+  cd $folder
+  set $::tmpdirvar [pwd]
+
+  puts "\n[mc m78 $composed.png] ..."
+
+  puts "\u2022 [mc m79]\n"
+  set start [clock milliseconds]
+  # Fill missing tiles by black tile
+  exec $::gm convert -size 256x256 xc:black $tmppfx.void.png
+  set tiles {}
+  set fd [open $gm_script w]
+  set ytile $ymin
+  set col {}
+  while {$ytile <= $ymax} {
+    set xtile $xmin
+    set row {}
+    while {$xtile <= $xmax} {
+      set tile $prefix$zoom.$xtile.$ytile.png
+      if {[file exists $tile]} {
+	lappend row $tile
+	lappend tiles $tile
+      } else {
+	lappend row $tmppfx.void.png
+      }
+      incr xtile
+    }
+    puts $fd "convert $row +append $tmppfx.$ytile.strip.png"
+    lappend col $tmppfx.$ytile.strip.png
+    incr ytile
+  }
+  close $fd
+
+  lassign [gm_batch $gm_script] rc result
+  set stop [clock milliseconds]
+
+  if {$rc} {puts "[mc m74 $result]"}
+
+  set time [expr $stop-$start]
+  puts "[mc m85 $time]"
+  file delete -force $gm_script $tmppfx.void.png
+
+  set $::tmpdirvar $::tmpdirval
+  cd $::cwd
+
+  if {$rc} {
+    file delete -force {*}$col
+    return
+  }
+
+  # Compose horizontal tile strips to image
+
+  cd $folder
+  set $::tmpdirvar [pwd]
+
+  puts "\u2022 [mc m80]\n"
+  set start [clock milliseconds]
+  set fd [open $gm_script w]
+  puts $fd "convert $col -append $composed.png"
+  close $fd
+
+  lassign [gm_batch $gm_script] rc result
+  set stop [clock milliseconds]
+
+  if {$rc} {puts "[mc m74 $result]"}
+
+  set stop [clock milliseconds]
+  set time [expr $stop-$start]
+  puts "[mc m85 $time]"
+  file delete -force $gm_script {*}$col
+
+  if {!$rc} {puts "[mc m81 $composed.png]"}
+
+  # Delete tiles
+
+  if {!${::tiles.keep}} {
+    file delete -force {*}$tiles
+    puts "\n[mc m83]"
   }
 
   set $::tmpdirvar $::tmpdirval
   cd $::cwd
 
-  if {!${::tiles.compose}} {return 0}
+  if {$rc} {return}
 
-  # Compose tiles
-
-  cd $folder
-  # Replace missing tiles by black tile
-  catch "exec {$::convert} -size 256x256 canvas:black tmp.0000.png"
-  # Write new composed image
-  puts "[mc m78 $composed.$suffix] ...\n"
-  set rc 0
-  set ytile $ymin
-  set col {}
-  set clean {}
-  while {$ytile <= $ymax} {
-    set xtile $xmin
-    set row {}
-    while {$xtile <= $xmax} {
-      set tile $prefix$zoom.$xtile.$ytile.$suffix
-      if {![file exists $tile]} {file copy -force tmp.0000.png $tile}
-      lappend row $tile
-      incr xtile
-    }
-    lappend clean {*}$row
-    # Compose horizontal tiles to 1 horizontal strip
-    puts "\r[mc m79 $xcount $xmin $ytile $xmax $ytile] ..."
-    update
-    set command [list $::convert {*}$row +append tmp.$ytile.png]
-    set rc [catch "exec $command" result]
-    if {$rc} {break}
-    lappend col tmp.$ytile.png
-    incr ytile
-  }
-  # Compose horizontal strips to 1 vertical strip = composed tile
-  if {!$rc} {
-    puts "\r[mc m80 $ycount] ..."
-    update
-    set command [list $::convert {*}$col -append $composed.$suffix]
-    set rc [catch "exec $command" result]
-  }
-  if {!$rc} {
-    puts "\r[mc m81 $composed.$suffix]"
-  } else {
-    puts "[mc m82]:\n$result"
-  }
-  # Delete temporary files and remaining files after failed composition
-  file delete -force {*}[glob -nocomplain -type f tmp.\[0-9\]*.png]
-  file delete -force {*}[glob -nocomplain -type f $composed-\[0-9\]*.$suffix]
-  if {!${::tiles.keep}} {
-    file delete -force {*}$clean
-    puts "[mc m83]"
-  }
-  puts ""
-  update
-  cd $::cwd
-
-  if {$rc} {return 1}
-
-  # Compose image with alpha transparent hillshading overlay
-
-  if {$srv == "srv"} {
-    if {${::shading.onoff}} {return 0}
-  } elseif {$srv == "ovl"} {
-    puts "[mc m84] ..."
-    cd $folder
-    set clean {}
-    set ytile ${::tiles.ymin}
-    while {$ytile <= $ymax} {
-      set xtile $xmin
-      while {$xtile <= $xmax} {
-	set tile $prefix$zoom.$xtile.$ytile
-	set map $tile.png
-	set ovl $tile.ovl.png
-	if {[file exists $map] && [file exists $ovl]} {
-	  catch "exec {$::convert} $map $ovl -composite tmp.$map"
-	  file rename -force tmp.$map $map
-	  lappend clean $ovl
-	}
-	incr xtile
-      }
-      incr ytile
-    }
-    set map $composed.png
-    set ovl $composed.ovl.png
-    if {[file exists $map] && [file exists $ovl]} {
-      catch "exec {$::convert} $map $ovl -composite tmp.$map"
-      file rename -force tmp.$map $map
-      lappend clean $ovl
-    }
-    file delete -force {*}$clean
-    puts "[mc m81 $map]"
-    puts ""
-    cd $::cwd
-  }
-  if {!${::composed.show}} {return 0}
+  if {!${::composed.show}} {return}
 
   # Show composed image by background job
 
   set file $folder/$composed.png
-  if {![file exists $file]} {return 1}
+  if {![file exists $file]} {return}
   if {$::tcl_platform(platform) == "windows"} {
     set script "exec cmd.exe /C START {} \"$file\""
   } elseif {$::tcl_platform(os) == "Linux"} {
     set script "exec nohup xdg-open \"$file\" >/dev/null"
   }
   after 0 "catch {$script}"
-  return 0
+  return
 
+}
+
+# Wait for valid selection or finish
+
+while {1} {
+  vwait action
+  if {$action == 0} {
+    foreach item {global tmsserver shading tiles} {save_${item}_settings}
+    exit
+  }
+  unset action
+  if {[selection_ok]} {break}
+  busy_state 0
 }
 
 # Run render job
 
-if {![run_render_job srv]} {
-  srv_start ovl
-  if {[process_running ovl]} {
-     run_render_job ovl
-     process_kill ovl
-  }
-}
-tk busy forget .buttons
+run_render_job
+busy_state 0
 
 # Wait for new selection or finish
 
 update idletasks
 if {![info exists action]} {vwait action}
 
-# After changing settings:
-# Run render job
+# After changing settings: run render job
 
 while {$action == 1} {
   unset action
-  if {[selection_ok]} {
-    if {![run_render_job srv]} {
-      srv_start ovl
-      if {[process_running ovl]} {
-	run_render_job ovl
-	process_kill ovl
-      }
-    }
-  }
-  tk busy forget .buttons
+  if {[selection_ok]} {run_render_job}
+  busy_state 0
   if {![info exists action]} {vwait action}
 }
 unset action

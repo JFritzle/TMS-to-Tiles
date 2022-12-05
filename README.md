@@ -17,7 +17,7 @@ Resource files are named _TMS-to-Tiles.<locale\>_, where _<locale\>_ matches loc
 Downloaded tiles may optionally be composed to an image. Composition requires package _ImageMagick_ with package’s command line utility _convert_ to be installed. 
 
 Screenshot of graphical user interface: 
-![GUI](https://user-images.githubusercontent.com/62614244/179404122-7cfea5fb-8fe2-40bd-9426-7b31971db25d.png)
+![GUI_Windows](https://user-images.githubusercontent.com/62614244/205705948-1d373002-8c0e-4ed1-8deb-629adbb3f65d.png)
 
 
 ### Installation
@@ -48,12 +48,18 @@ Note 1: [7-Zip](https://www.7-zip.org) file archiver/extractor is able to unpack
 Note 2: Archives of latest releases for Windows at teclab’s tcltk repository may have file extension _.zip_ while they should have extension _.tgz_. Rename extension to _.tgz_ before unpacking archive.  
 Linux: Install packages _tcl, tcllib, tk_, _tklib_ and _tcl-tls_ using Linux package manager. Package _tklib_ is required for tooltips and package _tcl-tls_ is required to connect to servers via HTTPS protocol (Ubuntu: _apt install tcl tcllib tk tklib tcl-tls_)
 
-5. ImageMagick  
-Windows: If not yet installed, download and install latest ImageMagick version from [download section](https://imagemagick.org/script/download.php). Enable option "Install legacy utilities" during installation.  
-After installation, legacy utility _convert.exe_ is expected to be found in one of folders _C:\Program Files*\ImageMagick*_. An alternative installation path for _convert.exe_ can be specified in the ini file.  
-Linux: If not yet installed, install ImageMagick package using Linux package manager. (Ubuntu: _apt install imagemagick_)
+5. GraphicsMagick  
+Windows: If not yet installed, download and install latest GraphicsMagick version from [download section](https://sourceforge.net/projects/graphicsmagick/files/graphicsmagick-binaries).  
+After installation, utility _gm.exe_ is expected to be found in one of folders _C:\Program Files*\GraphicsMagick*_. An alternative installation path for _gm.exe_ can be specified in the ini file.  
+Linux: If not yet installed, install GraphicsMagick package using Linux package manager. (Ubuntu: _apt install graphicsmagick_)  
+Note: Resource limits of GraphicsMagick are hardcoded in tcl script file but can be adjusted if needed in the script file section _Set resource limits of GraphicsMagick_.
 
-6. DEM data (optional, required for hillshading)  
+6. curl (optional)  
+Windows: Starting with version 10, a suitable _curl_ is part of Windows and is to be found as _C:\Windows\System32\curl.exe_. If however desired, latest curl version is available at curl's [download section](https://curl.se/download.html). An alternative installation path for _curl.exe_ can be specified in the ini file.  
+Linux: If not yet installed, install curl package using Linux package manager. (Ubuntu: _apt install curl_)  
+Note: In particular when downloading many tiles, curl may download significantly faster than downloading by the Tcl built-in http package.
+
+7. DEM data (optional, required for hillshading)  
 Download and store DEM (Digital Elevation Model) data for the regions to be rendered.
 Notes:  
 Either HGT files or ZIP archives containing 1 equally named HGT file may be supplied.  
@@ -64,7 +70,7 @@ While 1\" (arc second) resolution DEM data have a significantly higher accuracy 
 \- HGT files with 1\" resolution DEM data are available for selected regions at [viewfinderpanoramas.org](http://www.viewfinderpanoramas.org/Coverage%20map%20viewfinderpanoramas_org1.htm). Unzip downloaded ZIP files to DEM folder.  
 \- ZIP archives with 3\" and 1\" resolution compiled and resampled by Sonny are available for selected regions at [Sonny's Digital LiDAR Terrain Models of European Countries](https://sonny.4lima.de). LiDAR data where available are more precise than SRTM data. Store downloaded ZIP files to DEM folder.
 
-7. TMS-to-Tiles graphical user interface  
+8. TMS-to-Tiles graphical user interface  
 Download language-neutral script file _TMS-to-Tiles.tcl_, user settings file _TMS-to-Tiles.ini_  and at least one localized resource file.  
 Windows: Copy downloaded files into Mapsforge tile server’s installation folder, e.g. into folder _%programfiles%/MapsforgeSrv_.  
 Linux: Copy downloaded files into Mapsforge tile server’s installation folder, e.g. into folder _~/MapsforgeSrv_.  
