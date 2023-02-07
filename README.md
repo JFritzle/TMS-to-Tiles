@@ -14,10 +14,10 @@ User settings file is named _TMS-to-Tiles.ini_. A template file is provided.
 
 Resource files are named _TMS-to-Tiles.<locale\>_, where _<locale\>_ matches locale’s 2 lowercase letters ISO 639-1 code. English localized resource file _TMS-to-Tiles.en_ and German localized resource file _TMS-to-Tiles.de_ are provided. Script can be easily localized to any other system’s locale by providing a corresponding resource file using English resource file as a template. 
 
-Downloaded tiles may optionally be composed to an image. Composition requires package _ImageMagick_ with package’s command line utility _convert_ to be installed. 
+Downloaded tiles may optionally be composed to an image.  
 
 Screenshot of graphical user interface: 
-![GUI_Windows](https://user-images.githubusercontent.com/62614244/205705948-1d373002-8c0e-4ed1-8deb-629adbb3f65d.png)
+![GUI_Windows](https://user-images.githubusercontent.com/62614244/217317142-c0e9c73e-73a6-46fc-9a0e-aa959c4e04cc.png)
 
 
 ### Installation
@@ -48,11 +48,22 @@ Note 1: [7-Zip](https://www.7-zip.org) file archiver/extractor is able to unpack
 Note 2: Archives of latest releases for Windows at teclab’s tcltk repository may have file extension _.zip_ while they should have extension _.tgz_. Rename extension to _.tgz_ before unpacking archive.  
 Linux: Install packages _tcl, tcllib, tk_, _tklib_ and _tcl-tls_ using Linux package manager. Package _tklib_ is required for tooltips and package _tcl-tls_ is required to connect to servers via HTTPS protocol (Ubuntu: _apt install tcl tcllib tk tklib tcl-tls_)
 
-5. GraphicsMagick  
+5. GraphicsMagick and/or ImageMagick  
+At least one installation of either GraphicsMagick or ImageMagick is required!  
+Usually GraphicsMagick is faster than ImageMagick, especially with a large number of tiles.  
+For performance reasons, Q8 variants of both graphics tools are strongly preferable over Q16 variants. Since Q16 variants internally work with 16-bit color values per pixel, each input file with 8-bit color values per pixel must be internally converted to 16-bit color values before processing, which consumes time, twice as much memory and disk space.  
+<br/>GraphicsMagick:  
 Windows: If not yet installed, download and install latest GraphicsMagick version from [download section](https://sourceforge.net/projects/graphicsmagick/files/graphicsmagick-binaries).  
-After installation, utility _gm.exe_ is expected to be found in one of folders _C:\Program Files*\GraphicsMagick*_. An alternative installation path for _gm.exe_ can be specified in the ini file.  
+After installation, program _gm.exe_ is expected to be found in one of folders _C:\Program Files*\GraphicsMagick*_. An alternative installation path for _gm.exe_ can be specified in the ini file.  
 Linux: If not yet installed, install GraphicsMagick package using Linux package manager. (Ubuntu: _apt install graphicsmagick_)  
-Note: Resource limits of GraphicsMagick are hardcoded in tcl script file but can be adjusted if needed in the script file section _Set resource limits of GraphicsMagick_.
+Note: GraphicsMagick resource limits are hard-coded in Tcl script file, but can be adjusted in section _Set resource limits of GraphicsMagick_ if needed.  
+<br/>ImageMagick:  
+ImageMagick version 7 or newer is required! Versions older than version 7 do not include program _magick_ required for scripting.  
+Windows: If not yet installed, download and install latest ImageMagick version from [download section](https://imagemagick.org/script/download.php).  
+After installation, program _magick.exe_ is expected to be found in one of folders _C:\Program Files*\ImageMagick*_. An alternative installation path for _magick.exe_ can be specified in the ini file.  
+Linux: If not yet installed, install ImageMagick package using Linux package manager. (Ubuntu: _apt install imagemagick_)  
+When Linux package managers do only install versions older than version 7 by default, then [installation from source](https://imagemagick.org/script/install-source.php) may be required.  
+Note: ImageMagick resource limits are hard-coded in Tcl script file, but can be adjusted in section _Set resource limits of ImageMagick_ if needed.  
 
 6. curl (optional)  
 Windows: Starting with version 10, a suitable _curl_ is part of Windows and is to be found as _C:\Windows\System32\curl.exe_. If however desired, latest curl version is available at curl's [download section](https://curl.se/download.html). An alternative installation path for _curl.exe_ can be specified in the ini file.  
@@ -125,6 +136,8 @@ lower right half of image was composed with hillshading enabled and settings sho
 
 ### Hints
 
+* Output console  
+While console output of tile server can be informative and helpful to verify what is happening as well as to analyze errors, writing to console costs some performance. Therefore the console should be hidden if not needed. 
 * Tiles range in x and y directions may be given as tile numbers or as coordinate values. Entered coordinate values are converted into tile numbers according to zoom level set, entered tile numbers are converted into coordinate values according to zoom level set. When changing the zoom level, the input values are retained, the converted values however are recalculated. For correlation between zoom level and corresponding tiles range and for conversion formulas used, see https://wiki.openstreetmap.org/wiki/Slippy_map_tilenames.  
 * When hillshading enabled, server tiles and rendered hillshading tiles are first stored separately. Post-processing hillshading, gray value of flat area gets mapped to full transparency, darker gray values get mapped to transparency levels of black, brighter gray values get mapped to transparency levels of white. Thus the flatter the area, the more the original colors of the map shine through. Finally, hillshading as alpha-transparent overlay gets composed with map downloaded from server.  
 [OpenTopoMap](https://opentopomap.org) uses this same hillshading technique.  
