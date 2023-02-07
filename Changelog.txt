@@ -1,3 +1,15 @@
+2023-02-07
+
+- README: Hint to hide output console for performance reason, if not needed
+- README: Expand section "GraphicsMagick and/or ImageMagick"
+- Expand ini file by new variable "magick_cmd"
+- Expand GUI to choose either graphics tool 'GraphicsMagick' or 'ImageMagick'
+- Rename downloaded tiles to .png when type already PNG and no color post-processing
+- Faster composition of tiles to final image by only one single montage step
+- Change filename pattern of composed image
+- Allow cancelling of running composition
+- Minor script optimizations
+
 2022-12-05
 
 - Redesign download workflow
