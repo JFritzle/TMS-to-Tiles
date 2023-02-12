@@ -1,10 +1,16 @@
+2023-02-12
+
+- README: Hint how to build Q8 variant of 'ImageMagick' under Linux
+- Prevent current settings from being changed while render job is running
+- Improve 'GraphicsMagick' and 'ImageMagick' error recognition and reporting
+- Clean up after cancel or failure
+
 2023-02-07
 
 - README: Hint to hide output console for performance reason, if not needed
 - README: Expand section "GraphicsMagick and/or ImageMagick"
 - Expand ini file by new variable "magick_cmd"
 - Expand GUI to choose either graphics tool 'GraphicsMagick' or 'ImageMagick'
-- Rename downloaded tiles to .png when type already PNG and no color post-processing
 - Faster composition of tiles to final image by only one single montage step
 - Change filename pattern of composed image
 - Allow cancelling of running composition
@@ -12,6 +18,7 @@
 
 2022-12-05
 
+- Add button to deselect all overlays
 - Redesign download workflow
 - Switch graphics tool from 'ImageMagick' to 'GraphicsMagick'
 - Option to download tiles either by built-in "http" or by program "curl"
@@ -27,11 +34,57 @@
 
 - Show operating system message, if TCP port is not available
 
-2022-07-20
-
-- Link to github was pointing to wrong repository
-
 2022-07-17
 
-- Initial version
+- Hillshading was not applied to composed image,
+  when checkbutton "Show composed image after completion" was off
 - README: Location of "marlin-*.jar" files for mapsforgesrv's branch "Java8" was incorrect
+- README: Note how to unpack .tgz archives
+
+2022-07-15
+
+- Correct wrong name of user settings file in README
+- Repair README link to screenshot
+
+2022-07-13
+
+- Drop support for tile server versions before version 0.17.4
+- Script variable "transparent" from ini file is no longer used
+- Removed restriction to fully qualified (absolute) pathnames in ini file,
+  pathnames relative to the script installation folder are now acceptable
+- ImageMagick's "convert" executable is now required and no longer optional
+- Removed checkbutton "Write tiles to files"
+- Removed checkbutton "After each server transaction wait for completion"
+- Removed checkbutton "Use concurrent connections to tile server"
+- Show progress of downloaded tiles in 1 line, updated for each tile
+- Show progress of generating tile strips in 1 line, updated for each tile strip
+- Script optimizations
+- Minor README changes
+
+2022-06-21
+
+- Add new ini file variable "convert_cmd" for ImageMagick's "convert" executable
+- Add tooltip to zoom level slider
+- Append filename to "Wrote composed image file" message
+- Minor README changes
+
+2022-06-18
+
+- Avoid uninitialized server TCP port 
+
+2022-06-17
+
+- Check server JAR file by script variable "server_jar" for existence
+- Allow leading sign and/or digits 0 when validating number input
+- Minor README changes
+
+2022-05-19
+
+- Avoid script aborting when java path by ini file variable "java_cmd" contains spaces
+
+2022-04-23
+
+- Script variable "ip_address" from ini file is no longer required.
+- Add optional hillshading as alpha-transparent overlay ("Hillshading as map").
+- Enhance console output and make it more readable.
+- Drop support for tile server versions before version 0.17.1.
