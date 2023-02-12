@@ -407,11 +407,7 @@ foreach item {server_jar} {
 set java_version 0
 set java_string "unknown"
 set command [list $java_cmd -version]
-if {$::tcl_platform(os) == "Windows NT"} {
-  set rc [catch {open "| $command 2>@1" r} fd]
-} elseif {$::tcl_platform(os) == "Linux"} {
-  set rc [catch {open "| $command 2>@ stdout" r} fd]
-}
+set rc [catch {open "| $command 2>@1" r} fd]
 if {$rc} {error_message "$fd" exit}
 fconfigure $fd -buffering line -translation auto
 if {[gets $fd line] != -1} {
@@ -423,7 +419,7 @@ if {[gets $fd line] != -1} {
     set java_version $data; # Other Java versions
   }
 }
-close $fd
+catch "close $fd"
 
 # Evaluate numeric tile server version
 # from output line containing version string " version: x.y.z"
@@ -1230,14 +1226,14 @@ proc merge_server_file {} {
   }
   close $fd
   .tmsserver.list_values configure \
-	  -height [expr min([llength ${::tms.list}],12)]
+	-height [expr min([llength ${::tms.list}],12)]
 }
 
 proc set_server_file {} {
   set file ${::tms.servers}
   if {[file exists $file]} {set folder [file dirname $file]} \
   else {set folder ${::ini_folder}}
-  set file [tk_getOpenFile  -parent .tmsserver -initialdir $folder \
+  set file [tk_getOpenFile -parent .tmsserver -initialdir $folder \
 	-filetypes [list [list [mc l151] .txt]] \
 	-title "$::title - [mc l15]"]
   if {$file != ""} {set ::tms.servers $file}
@@ -1433,11 +1429,11 @@ proc save_tiles_settings {} {uplevel #0 {
   fconfigure $fd -buffering full
   set xyrange.mode [.xyrange_values current]
   foreach name {tiles.folder tiles.prefix xyrange.mode zoom.level \
-	  tiles.xmin tiles.xmax tiles.ymin tiles.ymax \
-	  coord.xmin coord.xmax coord.ymin coord.ymax \
-	  tiles.write tiles.abort tiles.compose tiles.keep composed.show \
-	  tcp.interface tcp.port shading.layer \
-	  use.curl use.magick http.wait http.keep} {
+	tiles.xmin tiles.xmax tiles.ymin tiles.ymax \
+	coord.xmin coord.xmax coord.ymin coord.ymax \
+	tiles.write tiles.abort tiles.compose tiles.keep composed.show \
+	tcp.interface tcp.port shading.layer \
+	use.curl use.magick http.wait http.keep} {
     puts $fd "$name=[set $name]"
   }
   close $fd
@@ -1453,7 +1449,7 @@ pack .m -side left -expand 1 -fill y -padx 5
 # Right menu column
 
 frame .r
-pack .r -side right -anchor n
+pack .r -anchor n
 
 # X and Y range
 
@@ -1767,16 +1763,19 @@ pack .show_composed -in .tiles_compose_onoff -expand 1 -fill x
 frame .buttons
 button .buttons.continue -text [mc b01] -width 12 -command {set action 1}
 button .buttons.cancel -text [mc b02] -width 12 -command {set action 0}
-pack .buttons -in .r -ipady 5
+pack .buttons -after .r -anchor n -ipady 5
 pack .buttons.continue .buttons.cancel -side left
 
 proc busy_state {state} {
+  set busy {.l .r .buttons.continue .shading .effects .server .tmsserver}
   if {$state} {
-    .buttons.continue configure -state disabled -relief sunken
+    foreach item $busy {tk busy hold $item}
+    .buttons.continue configure -relief sunken
     .buttons.cancel configure -text [mc b03] -command cancel_render_job
   } else {
-    .buttons.continue configure -state normal -relief raised
+    .buttons.continue configure -relief raised
     .buttons.cancel configure -text [mc b02] -command {set action 0}
+    foreach item $busy {tk busy forget $item}
   }
   update idletasks
 }
@@ -1805,7 +1804,7 @@ proc show_hide_console {} {
 }
 
 if {$console != -1} {
-  pack .output -in .r -expand 1 -fill x
+  pack .output -after .buttons -anchor n -expand 1 -fill x
   show_hide_console
 
   wm protocol .console WM_DELETE_WINDOW ".output invoke"
@@ -1902,11 +1901,7 @@ proc selection_ok {} {
 
 proc process_start {command process} {
 
-  if {$::tcl_platform(os) == "Windows NT"} {
-    set rc [catch {open "| $command 2>@1" r} result]
-  } elseif {$::tcl_platform(os) == "Linux"} {
-    set rc [catch {open "| $command 2>@ stdout" r} result]
-  }
+  set rc [catch {open "| $command 2>@1" r} result]
   if {$rc} {
     error_message "$result" return
     after 0 {set action 0}
@@ -1927,13 +1922,12 @@ proc process_start {command process} {
 
   append mark \$${process}::cr {\[} [string toupper $process] {\]}
   fileevent $fd readable "
+	while {\[gets $fd line\] >= 0} {puts \"$mark \$line\"};
 	if {\[eof $fd\]} {
 	  close $fd;
 	  namespace delete $process;
 	  set ::action 0;
 	  puti \"[mc m52 $pid $exe]\";
-	} else {
-	  while {\[gets $fd line\] >= 0} {puts \"$mark \$line\"};
 	}"
 
 }
@@ -2138,12 +2132,7 @@ proc download_with_curl {} {uplevel 1 {
   set valid 0
   set count 0
 
-  if {$::tcl_platform(os) == "Windows NT"} {
-    set rc [catch {open "| $cmd 2>@1" r} result]
-  } elseif {$::tcl_platform(os) == "Linux"} {
-    set rc [catch {open "| $cmd 2>@ stdout" r} result]
-  }
-
+  set rc [catch {open "| $cmd 2>@1" r} result]
   if {$rc} {
     error_message "Download $url:\n$result" return
     puts $fdlog [format $logfmt "URL" $url]
@@ -2167,16 +2156,16 @@ proc download_with_curl {} {uplevel 1 {
 	  set line \[string trimright \$line \\r\];
 	  $echo
 	  puts $fdlog \$line;
-	  if {\$::cancel == 1} {break};
+	  if {\$::cancel} {break};
 	};
-	if {\[eof $fd\] || \$::cancel == 1} {
+	if {\[eof $fd\] || \$::cancel} {
 	  set ::batch::rc \[catch {close $fd} ::batch::result];
 	}"
 
   vwait ::batch::rc
   lassign [list $::batch::rc $::batch::result] rc result
   namespace delete batch
-  if {$rc || $::cancel == 1} {return 1}
+  if {$rc || $::cancel} {return 1}
 
   # Count successfully downloded files
 
@@ -2217,7 +2206,7 @@ proc download_with_http {} {uplevel 1 {
 
       # Relocation loop
       while {1} {
-	if {$::cancel == 1} {return 1}
+	if {$::cancel} {return 1}
 	if {$srv == "srv"} {puts "\r> GET $url"}
 	set rc [catch "::http::geturl $url -keepalive 1 \
 	  -binary 1 -handler {geturl_handler $file}" result]
@@ -2327,9 +2316,23 @@ proc run_render_job {} {
 
   set prefix ${::tiles.prefix}
   if {$prefix != "" && ![regexp {[-.]+$} $prefix]} {append prefix "."}
-  set tmppfx [pid].tile
 
   set composed $prefix$zoom.$xmin-$xmax.$ymin-$ymax
+  file delete -force $composed.png
+
+  # First remove existing tiles
+
+  set tiles {}
+  set ytile $ymin
+  while {$ytile <= $ymax} {
+    set xtile $xmin
+    while {$xtile <= $xmax} {
+      lappend tiles $prefix$zoom.$xtile.$ytile
+      incr xtile
+    }
+    incr ytile
+  }
+  file delete -force {*}[lmap tile $tiles {list $tile.png}]
 
   # Open log file
 
@@ -2340,10 +2343,13 @@ proc run_render_job {} {
   fconfigure $fdlog -buffering full
 
   set rc 0
+  set ovlmap [expr ${::shading.onoff} && {${::shading.layer} == "asmap"}]
   foreach srv {"srv" "ovl"} {
 
-    if {$srv == "ovl" && !${::shading.onoff}} {continue}
-    if {$srv == "ovl" && ${::shading.layer} == "onmap"} {continue}
+    if {$srv == "ovl" && !$ovlmap} {continue}
+
+    if {$srv == "srv"} {set suffix "img"}
+    if {$srv == "ovl"} {set suffix "ovl"}
 
     # Url
 
@@ -2358,29 +2364,6 @@ proc run_render_job {} {
     puts $fdlog $logsep
     puts $fdlog "Download tiles from URL '$url_pattern' ..."
     puts $fdlog $logsep
-
-    # First remove existing tiles
-
-    if {$srv == "srv"} {set suffix "png"}
-    if {$srv == "ovl"} {set suffix "ovl"}
-
-    set clean {}
-    set ytile $ymin
-    while {$ytile <= $ymax} {
-      set xtile $xmin
-      while {$xtile <= $xmax} {
-	set file $prefix$zoom.$xtile.$ytile.$suffix
-	lappend clean $file
-	incr xtile
-      }
-      incr ytile
-    }
-    lappend clean $prefix$zoom.$xmin.$ymin-$zoom.$xmax.$ymax.$suffix
-    lappend clean $composed.$suffix $composed.$srv.log
-    file delete -force {*}$clean
-
-    if {$srv == "srv"} {set suffix "img"}
-    if {$srv == "ovl"} {set suffix "ovl"}
 
     # Start server
 
@@ -2406,6 +2389,8 @@ proc run_render_job {} {
 
     if {$srv == "ovl"} {process_kill $srv}
 
+    if {$::cancel} {break}
+
     # Report result
 
     puts "\n[mc m72 $total $valid]"
@@ -2419,24 +2404,29 @@ proc run_render_job {} {
     puts "... [mc m77]\n"
 
     if {$valid == 0} {set rc 1}
-    if {$rc || $::cancel == 1} {break}
+    if {$rc} {break}
 
   }
   close $fdlog
 
-  cd $::cwd
-
   # Download cancelled or ended abnormally
 
-  if {$::cancel == 1} {
+  if {$rc || $::cancel} {
+    file delete -force {*}[lmap tile $tiles {list $tile.img}]
+    if {$ovlmap} {file delete -force {*}[lmap tile $tiles {list $tile.ovl}]}
+  }
+
+  if {$::cancel} {
     puts "\n[mc m73a]"
-    file delete -force $folder/$logfile
+    file delete -force $logfile
+    cd $::cwd
     return
   } elseif {$rc || $valid != $total} {
     puts "[mc m73b $folder/$logfile]"
+    cd $::cwd
     return
   } else {
-    file delete -force $folder/$logfile
+    file delete -force $logfile
   }
 
   # Start tiles processing
@@ -2444,7 +2434,6 @@ proc run_render_job {} {
   upvar ::use.magick use_magick
   set exe [set ::$use_magick]
 
-  cd $folder
   if {$use_magick == "gm"} {
     set ::env(MAGICK_TMPDIR) $folder
   } elseif {$use_magick == "magick"} {
@@ -2456,11 +2445,7 @@ proc run_render_job {} {
   proc batch_proc {exe args} {
     lappend cmd $exe {*}$args
     set exe [file tail $exe]
-    if {$::tcl_platform(os) == "Windows NT"} {
-      set rc [catch {open "| $cmd 2>@1" r} result]
-    } elseif {$::tcl_platform(os) == "Linux"} {
-      set rc [catch {open "| $cmd 2>@ stdout" r} result]
-    }
+    set rc [catch {open "| $cmd 2>@1" r} result]
     if {$rc} {return [list $rc $result]}
     set fd $result
     namespace eval batch {}
@@ -2469,9 +2454,9 @@ proc run_render_job {} {
     fileevent $fd readable "
 	while {\[gets $fd line\] >= 0} {
 	  puts \"\\r> $exe \$line\";
-	  if {\$::cancel == 1} {break};
+	  if {\$::cancel} {break};
 	};
-	if {\[eof $fd\] || \$::cancel == 1} {
+	if {\[eof $fd\] || \$::cancel} {
 	  set ::batch::rc \[catch {close $fd} ::batch::result];
 	}"
     vwait ::batch::rc
@@ -2482,7 +2467,7 @@ proc run_render_job {} {
 
   # Fill missing tiles by white tile
 
-  set void $tmppfx.void.png
+  set void [pid].void.png
   if {$use_magick == "gm"} {
     exec $exe convert -size 256x256 xc:white $void
   } elseif {$use_magick == "magick"} {
@@ -2510,10 +2495,9 @@ proc run_render_job {} {
   puts "$text ...\n"
   set start [clock milliseconds]
 
-  set batch_file $tmppfx.batch.txt
-  set fd [open $batch_file w]
+  set fd [file tempfile]
   if {$use_magick == "magick"} \
-	{puts $fd "-format \"%f $contrast_level %t.png\\n\""}
+	{puts $fd "-format \"%f $level %t.png\\n\""}
   set clean {}
   set ytile $ymin
   while {$ytile <= $ymax} {
@@ -2522,33 +2506,53 @@ proc run_render_job {} {
       set tile $prefix$zoom.$xtile.$ytile
       incr xtile
       if {![file exists $tile.img]} {continue}
-      if {$level == "" && \
-	  [lindex [::filetype $tile.img] end] == "png"} { 
+      if {$level == "" && [lindex [filetype $tile.img] end] == "png"} {
 	file rename -force $tile.img $tile.png
-	puts "\r> rename $tile.img $tile.png" 
+	puts "\r> rename $tile.img $tile.png"
       } elseif {$use_magick == "gm"} {
 	puts $fd "convert $tile.img $level $tile.png"
-        lappend clean $tile.img
+	lappend clean $tile.img
       } elseif {$use_magick == "magick"} {
 	puts $fd "$tile.img $level -identify -write $tile.png +delete"
-        lappend clean $tile.img
+	lappend clean $tile.img
       }
     }
     incr ytile
   }
-  close $fd
+  seek $fd 0
 
+  set fderr [file tempfile]
   if {[llength $clean] == 0} {
     set rc 0
   } elseif {$use_magick == "gm"} {
-    lassign [batch_proc $exe batch -echo on $batch_file] rc result
+    lassign [batch_proc $exe batch -stop-on-error on -echo on - \
+	<@ $fd 2>@ $fderr] rc result
   } elseif {$use_magick == "magick"} {
-    lassign [batch_proc $exe -script $batch_file] rc result
+    lassign [batch_proc $exe -script - \
+	<@ $fd 2>@ $fderr] rc result
   }
+  close $fd
+  seek $fderr 0
+  set data [split [read -nonewline $fderr] \n]
+  close $fderr
+  file delete -force {*}$clean
   set stop [clock milliseconds]
-  file delete -force $batch_file {*}$clean
 
-  if {$::cancel == 1} {
+  if {[llength $data]} {
+    if {$rc || [file exists $tile.png]} {
+      puts "> [join $data "\n> "]\n"
+    } else {
+      set rc 1
+      set result "\n [join $data "\n "]\n"
+    }
+  }
+
+  if {$rc || $::cancel} {
+    file delete -force {*}[lmap tile $tiles {list $tile.png}]
+    if {$ovlmap} {file delete -force {*}[lmap tile $tiles {list $tile.ovl}]}
+  }
+
+  if {$::cancel} {
     puts "[mc m74a $exe]"
     break
   } elseif {$rc} {
@@ -2561,13 +2565,12 @@ proc run_render_job {} {
 
   # Compose map tiles and alpha transparent hillshading overlay tiles
 
-  if {${::shading.onoff} && ${::shading.layer} == "asmap"} {
+  if {$ovlmap} {
 
   puts "\n[mc m84c] ...\n"
   set start [clock milliseconds]
 
-  set batch_file $tmppfx.batch.txt
-  set fd [open $batch_file w]  	
+  set fd [file tempfile batch_file]
   if {$use_magick == "magick"} \
 	{puts $fd "-format \"%f null: %t.ovl -layers composite %f\\n\""}
   set clean {}
@@ -2590,17 +2593,38 @@ proc run_render_job {} {
     }
     incr ytile
   }
-  close $fd
+  seek $fd 0
+  set mtime [file mtime $batch_file]
 
+  set fderr [file tempfile]
   if {$use_magick == "gm"} {
-    lassign [batch_proc $exe batch -echo on $batch_file] rc result
+    lassign [batch_proc $exe batch -stop-on-error on -echo on - \
+	<@ $fd 2>@ $fderr] rc result
   } elseif {$use_magick == "magick"} {
-    lassign [batch_proc $exe -script $batch_file] rc result
+    lassign [batch_proc $exe -script - \
+	<@ $fd 2>@ $fderr] rc result
   }
-  set stop [clock milliseconds]
+  close $fd
+  seek $fderr 0
+  set data [split [read -nonewline $fderr] \n]
+  close $fderr
   file delete -force $batch_file {*}$clean
+  set stop [clock milliseconds]
 
-  if {$::cancel == 1} {
+  if {[llength $data]} {
+    if {$rc || ([file exists $tile.png] && [file mtime $tile.png] >= $mtime)} {
+      puts "> [join $data "\n> "]\n"
+    } else {
+      set rc 1
+      set result "\n [join $data "\n "]\n"
+    }
+  }
+
+  if {$rc || $::cancel} {
+    file delete -force {*}[lmap tile $tiles {list $tile.png}]
+  }
+
+  if {$::cancel} {
     puts "[mc m74a $exe]"
     break
   } elseif {$rc} {
@@ -2621,7 +2645,7 @@ proc run_render_job {} {
 
   set start [clock milliseconds]
 
-  set batch_file $tmppfx.batch.txt
+  set batch_file [pid].tiles.lst
   set fd [open $batch_file w]
   set tiles {}
   set ytile $ymin
@@ -2643,13 +2667,29 @@ proc run_render_job {} {
 
   set args "montage -mode concatenate -tile ${xcount}x${ycount} @$batch_file $composed.png"
   puts "> [file tail $exe] $args"
-  lassign [batch_proc $exe {*}$args] rc result
+  set fderr [file tempfile]
+  lassign [batch_proc $exe {*}$args 2>@ $fderr] rc result
+  seek $fderr 0
+  set data [split [read -nonewline $fderr] \n]
+  close $fderr
   file delete -force $batch_file
   set stop [clock milliseconds]
 
-  if {$::cancel == 1} {
+  if {[llength $data]} {
+    if {$rc || [file exists $composed.png]} {
+      puts "> [join $data "\n> "]\n"
+    } else {
+      set rc 1
+      set result "\n [join $data "\n "]\n"
+    }
+  }
+
+  if {$rc || $::cancel} {
+    file delete -force {*}$tiles $composed.png
+  }
+
+  if {$::cancel} {
     puts "[mc m74a $exe]"
-    file delete -force {*}$tiles
     break
   } elseif {$rc} {
     puts "[mc m74b $exe $result]"
@@ -2675,7 +2715,7 @@ proc run_render_job {} {
   file delete -force $void
   cd $::cwd
 
-  if {$rc || $::cancel == 1} {return}
+  if {$rc || $::cancel} {return}
   if {!${::composed.show}} {return}
 
   # Show composed image by background job
