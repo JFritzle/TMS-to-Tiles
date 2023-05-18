@@ -385,7 +385,6 @@ if {$rc} {
   messagebox -title $title -icon error \
 	-message "Could not load required Tcl package 'tls'" \
 	-detail [regsub ": " $result ":\n"]
-  exit
 }
 
 #::http::register https 443 [list ::tls::socket -autoservername true]
@@ -411,7 +410,7 @@ set rc [catch {open "| $command 2>@1" r} fd]
 if {$rc} {error_message "$fd" exit}
 fconfigure $fd -buffering line -translation auto
 if {[gets $fd line] != -1} {
-  regsub {^.* version "(.*)".*$} $line {\1} data
+  regsub -nocase {^.* version "(.*)".*$} $line {\1} data
   set java_string $data
   if {[regsub {1\.([1-9][0-9]*)\.[0-9]?.*} $data {\1} data] > 0} {
     set java_version $data; # Oracle Java version <= 8
@@ -431,7 +430,7 @@ set rc [catch {open "| $command" r} fd]
 if {$rc} {error_message "$fd" exit}
 fconfigure $fd -buffering line -translation auto
 while {[gets $fd line] != -1} {
-  if {![regsub {^.* version: ((?:[0-9]+\.){2}(?:[0-9]+){1}).*$} $line \
+  if {![regsub -nocase {^.* version: ((?:[0-9]+\.){2}(?:[0-9]+){1}).*$} $line \
 	{\1} data]} {continue}
   set server_string $data
   foreach item [split $data .] \
@@ -1855,7 +1854,6 @@ proc incr_font_size {incr} {
 
 update
 wm positionfrom . program
-if {[tk windowingsystem] == "win32"} {wm state . normal}
 if {[info exists window.geometry]} {
   lassign ${window.geometry} x y width height
   # Adjust horizontal position if necessary
@@ -1863,8 +1861,7 @@ if {[info exists window.geometry]} {
   set x [expr min($x,[winfo vrootx .]+[winfo vrootwidth .]-$width)]
   wm geometry . +$x+$y
 }
-if {[tk windowingsystem] == "x11"} {wm state . normal}
-update idletasks
+wm deiconify .
 
 # Check selection for completeness
 
@@ -1921,13 +1918,13 @@ proc process_start {command process} {
   puti "[mc m51 $pid $exe]"
 
   append mark \$${process}::cr {\[} [string toupper $process] {\]}
+
   fileevent $fd readable "
 	while {\[gets $fd line\] >= 0} {puts \"$mark \$line\"};
 	if {\[eof $fd\]} {
-	  close $fd;
-	  namespace delete $process;
-	  set ::action 0;
-	  puti \"[mc m52 $pid $exe]\";
+	  close $fd; namespace delete $process;
+	  puti \[mc m52 $pid $exe\];
+	  set $process.eof 1;
 	}"
 
 }
@@ -1937,20 +1934,15 @@ proc process_start {command process} {
 proc process_kill {process} {
 
   if {![namespace exists $process]} {return}
-  namespace upvar $process fd fd pid pid exe exe
+  namespace upvar $process fd fd pid pid
 
-  fileevent $fd readable ""
-  close $fd
-  update
+  fileevent $fd readable [regsub {m52} [fileevent $fd readable] {m53}]
 
   if {$::tcl_platform(os) == "Windows NT"} {
     catch {exec TASKKILL /F /PID $pid}
   } elseif {$::tcl_platform(os) == "Linux"} {
     catch {exec kill -SIGTERM $pid}
   }
-
-  puti "[mc m53 $pid $exe]"
-  namespace delete $process
 
 }
 
@@ -2051,6 +2043,8 @@ proc srv_start {srv} {
   lappend command -mxt ${::threads.max}
   lappend command -mit ${::threads.min}
 
+  if {$::server_version >= 1900} {lappend command -term}
+
   puti "[mc m54 $name] ..."
   puts "[join [lmap item $command {regsub {^(.* +.*|())$} $item {"\1"}}]]"
 
@@ -2069,8 +2063,32 @@ proc srv_start {srv} {
   after 20
   update
 
-  if {![process_running $srv]} {error_message [mc m55 $name] return}
+  if {![process_running $srv]} {error_message [mc m55 $name] return; return}
+  set ${srv}::port $port
   set ${srv}::cr "\r"
+
+}
+
+# Mapsforge hillshading server stop procedure
+
+proc srv_stop {srv} {
+
+  if {![namespace exists $srv]} {return}
+
+  if {$::server_version < 1900} {
+    process_kill $srv
+  } else {
+    namespace upvar $srv port port
+    set url "http://127.0.0.1:${port}/terminate"
+    if {![catch {::http::geturl $url} token]} {
+      if {[::http::status $token] == "eof"} {set code 200} \
+      else {set code [::http::ncode $token]}
+      if {$code != 200} {process_kill $srv}
+      ::http::cleanup $token
+    }
+  }
+  if {![info exists ::$srv.eof]} {vwait $srv.eof}
+  unset ::$srv.eof
 
 }
 
@@ -2079,8 +2097,8 @@ proc srv_start {srv} {
 proc cancel_render_job {} {
 
   set ::cancel 1
-  if {![info exists ::batch::pid]} {return}
-  set pid ${::batch::pid}
+  if {![info exists batch::pid]} {return}
+  set pid $batch::pid
   if {$::tcl_platform(os) == "Windows NT"} {
     catch {exec TASKKILL /F /PID $pid}
   } elseif {$::tcl_platform(os) == "Linux"} {
@@ -2150,20 +2168,20 @@ proc download_with_curl {} {uplevel 1 {
   set fd $result
   fconfigure $fd -blocking 0 -buffering line -translation binary
   namespace eval batch {}
-  set ::batch::pid [pid $fd]
+  set batch::pid [pid $fd]
   fileevent $fd readable "
 	while {\[gets $fd line\] >= 0} {
 	  set line \[string trimright \$line \\r\];
 	  $echo
 	  puts $fdlog \$line;
-	  if {\$::cancel} {break};
+	  if {\$cancel} {break};
 	};
-	if {\[eof $fd\] || \$::cancel} {
-	  set ::batch::rc \[catch {close $fd} ::batch::result];
+	if {\[eof $fd\] || \$cancel} {
+	  set batch::rc \[catch {close $fd} batch::result];
 	}"
 
-  vwait ::batch::rc
-  lassign [list $::batch::rc $::batch::result] rc result
+  vwait batch::rc
+  lassign [list $batch::rc $batch::result] rc result
   namespace delete batch
   if {$rc || $::cancel} {return 1}
 
@@ -2385,9 +2403,9 @@ proc run_render_job {} {
     }
     set stop [clock milliseconds]
 
-    # Kill sever
+    # Stop server
 
-    if {$srv == "ovl"} {process_kill $srv}
+    if {$srv == "ovl"} {srv_stop $srv}
 
     if {$::cancel} {break}
 
@@ -2450,17 +2468,17 @@ proc run_render_job {} {
     set fd $result
     namespace eval batch {}
     fconfigure $fd -blocking 0 -buffering line
-    set ::batch::pid [pid $fd]
+    set batch::pid [pid $fd]
     fileevent $fd readable "
 	while {\[gets $fd line\] >= 0} {
 	  puts \"\\r> $exe \$line\";
-	  if {\$::cancel} {break};
+	  if {\$cancel} {break};
 	};
-	if {\[eof $fd\] || \$::cancel} {
-	  set ::batch::rc \[catch {close $fd} ::batch::result];
+	if {\[eof $fd\] || \$cancel} {
+	  set batch::rc \[catch {close $fd} batch::result];
 	}"
-    vwait ::batch::rc
-    set return [list $::batch::rc $::batch::result]
+    vwait batch::rc
+    set return [list $batch::rc $batch::result]
     namespace delete batch
     return $return
   }
