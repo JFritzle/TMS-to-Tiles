@@ -1,3 +1,7 @@
+2023-05-31
+
+- Catch abnormal end of Java, show error message and exit
+
 2023-05-18
 
 - Terminate tile server version 0.19.0 and newer gracefully
