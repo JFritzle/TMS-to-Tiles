@@ -93,8 +93,9 @@ if {[file exist $file]} {
   exit
 }
 
-# Try to replace settings file's relative paths by absolute paths,
-# but preserve commands if resolved by search path
+# Process user settings:
+# replace commands resolved by current search path
+# replace relative paths by absolute paths
 
 # - commands
 set cmds {java_cmd curl_cmd gm_cmd magick_cmd}
@@ -109,8 +110,10 @@ foreach item $list {
   if {![info exists $item]} {continue}
   set value [set $item]
   if {$value == ""} {continue}
-  if {[lsearch -exact $cmds $item] != -1 && \
-      [auto_execok $value] != ""} {continue}
+  if {[lsearch -exact $cmds $item] != -1} {
+    set exec [auto_execok $value]
+    if {$exec != ""} {set value [lindex $exec 0]}
+  }
   switch [file pathtype $value] {
     absolute		{set $item [file normalize $value]}
     relative		{set $item [file normalize $cwd/$value]}
@@ -346,11 +349,17 @@ if {$console == 1} {
 proc puti {text} {puts "\[---\] $text"}
 proc putw {text} {puts "\[+++\] $text"}
 
-# Show error message procedure
+# Show error message
 
 proc error_message {message exit_return} {
   messagebox -title $::title -icon error -message $message
   eval $exit_return
+}
+
+# Get shell command from exec command
+
+proc get_shell_command {command} {
+  return [join [lmap item $command {regsub {^(.* +.*|())$} $item {"\1"}}]]
 }
 
 # Check operating system
@@ -395,7 +404,7 @@ if {$rc} {
 
 foreach item {java_cmd} {
   set value [set $item]
-  if {[auto_execok $value] == ""} {error_message [mc e04 $value $item] exit}
+  if {$value == ""} {error_message [mc e04 $value $item] exit}
 }
 foreach item {server_jar} {
   set value [set $item]
@@ -407,10 +416,9 @@ foreach item {server_jar} {
 set java_version 0
 set java_string "unknown"
 set command [list $java_cmd -version]
-set rc [catch {open "| $command 2>@1" r} fd]
-if {$rc} {error_message "$command\n$fd" exit}
-fconfigure $fd -buffering line -translation auto
-if {[gets $fd line] != -1} {
+set rc [catch "exec $command 2>@1" result]
+if {!$rc} {
+  set line [lindex [split $result "\n"] 0]
   regsub -nocase {^.* version "(.*)".*$} $line {\1} data
   set java_string $data
   if {[regsub {1\.([1-9][0-9]*)\.[0-9]?.*} $data {\1} data] > 0} {
@@ -419,8 +427,9 @@ if {[gets $fd line] != -1} {
     set java_version $data; # Other Java versions
   }
 }
-set rc [catch "close $fd" error]
-if {$rc} {error_message "$command\n$error" exit}
+
+if {$rc || $java_version == 0} \
+  {error_message [mc e08 Java [get_shell_command $command] $result] exit}
 
 # Evaluate numeric tile server version
 # from output line containing version string " version: x.y.z"
@@ -428,10 +437,8 @@ if {$rc} {error_message "$command\n$error" exit}
 set server_version 0
 set server_string "unknown"
 set command [list $java_cmd -jar $server_jar -h]
-set rc [catch {open "| $command" r} fd]
-if {$rc} {error_message "$command\n$fd" exit}
-fconfigure $fd -buffering line -translation auto
-while {[gets $fd line] != -1} {
+set rc [catch "exec $command 2>@1" result]
+foreach line [split $result "\n"] {
   if {![regsub -nocase {^.* version: ((?:[0-9]+\.){2}(?:[0-9]+){1}).*$} $line \
 	{\1} data]} {continue}
   set server_string $data
@@ -439,25 +446,19 @@ while {[gets $fd line] != -1} {
 	{set server_version [expr 100*$server_version+$item]}
   break
 }
-set rc [catch "close $fd" error]
-if {$rc} {error_message "$command\n$error" exit}
+
+if {$rc || $server_version == 0} \
+  {error_message [mc e08 Server [get_shell_command $command] $result] exit}
 
 if {$server_version < 1704 } \
-	{error_message [mc e07 $server_string 0.17.4] exit}
+  {error_message [mc e07 $server_string 0.17.4] exit}
 
 # Looking for installed URL tool "curl"
 
 set curl ""
-if {[info exists curl_cmd] && $curl_cmd != ""} {
-  set curl [join [auto_execok $curl_cmd]]
-}
-if {$curl == ""} {
-  if {$::tcl_platform(os) == "Windows NT"} {
-    set curl "[file normalize $env(SystemRoot)]/System32/curl.exe"
-  } elseif {$::tcl_platform(os) == "Linux"} {
-    set curl [join [auto_execok curl]]
-  }
-}
+if {[info exists curl_cmd] && $curl_cmd != ""} {set curl $curl_cmd}
+if {$curl == ""} {set curl [lindex [auto_execok curl] 0]}
+
 if {$curl != ""} {
   catch "exec {$curl} -V" data
   set string [lindex [split $data] 1]
@@ -468,26 +469,21 @@ if {$curl != ""} {
 # Looking for installed GraphicsMagick's tool "gm"
 
 set gm ""
-if {[info exists gm_cmd] && $gm_cmd != ""} {
-  set gm [join [auto_execok $gm_cmd]]
-}
+if {[info exists gm_cmd] && $gm_cmd != ""} {set gm $gm_cmd}
 
-if {$gm == ""} {
-  if {$::tcl_platform(os) == "Windows NT"} {
-    foreach dir {"GraphicsMagick*Q8*" "GraphicsMagick*"} {
-      foreach var {"ProgramFiles" "ProgramFiles(x86)"} {
-	if {![info exists env($var)]} {continue}
-	set val $env($var)
-	set gm [lindex [glob -nocomplain -type f \
-	  "[file normalize $val]/$dir/gm.exe"] end]
-	if {$gm != ""} {break}
-      }
+if {$gm == "" && $::tcl_platform(os) == "Windows NT"} {
+  foreach dir {"GraphicsMagick*Q8*" "GraphicsMagick*"} {
+    foreach var {"ProgramFiles" "ProgramFiles(x86)"} {
+      if {![info exists env($var)]} {continue}
+      set val $env($var)
+      set gm [lindex [glob -nocomplain -type f \
+	"[file normalize $val]/$dir/gm.exe"] end]
       if {$gm != ""} {break}
     }
-  } elseif {$::tcl_platform(os) == "Linux"} {
-    set gm [join [auto_execok gm]]
+    if {$gm != ""} {break}
   }
 }
+if {$gm == ""} {set gm [lindex [auto_execok gm] 0]}
 
 # Set resource limits of GraphicsMagick
 # - GraphicsMagick uses defaults for unset resource values
@@ -510,26 +506,21 @@ if {$gm != ""} {
 # Looking for installed ImageMagick's tool "magick"
 
 set magick ""
-if {[info exists magick_cmd] && $magick_cmd != ""} {
-  set magick [join [auto_execok $magick_cmd]]
-}
+if {[info exists magick_cmd] && $magick_cmd != ""} {set magick $magick_cmd}
 
-if {$magick == ""} {
-  if {$::tcl_platform(os) == "Windows NT"} {
-    foreach dir {"ImageMagick*Q8*" "ImageMagick*"} {
-      foreach var {"ProgramFiles" "ProgramFiles(x86)"} {
-	if {![info exists env($var)]} {continue}
-	set val $env($var)
-	set magick [lindex [glob -nocomplain -type f \
-	  "[file normalize $val]/$dir/magick.exe"] end]
-	if {$magick != ""} {break}
-      }
+if {$magick == "" && $::tcl_platform(os) == "Windows NT"} {
+  foreach dir {"ImageMagick*Q8*" "ImageMagick*"} {
+    foreach var {"ProgramFiles" "ProgramFiles(x86)"} {
+      if {![info exists env($var)]} {continue}
+      set val $env($var)
+      set magick [lindex [glob -nocomplain -type f \
+	"[file normalize $val]/$dir/magick.exe"] end]
       if {$magick != ""} {break}
     }
-  } elseif {$::tcl_platform(os) == "Linux"} {
-    set magick [join [auto_execok magick]]
+    if {$magick != ""} {break}
   }
 }
+if {$magick == ""} {set magick [lindex [auto_execok magick] 0]}
 
 # Set resource limits of ImageMagick
 # - ImageMagick uses defaults for unset resource values
@@ -1278,7 +1269,7 @@ grid $wtest.text -row 2 -column 1 -sticky we
 label $wtest.image -padx 1 -bd 1 -relief sunken -image ""
 label $wtest.size
 
-# Test URL procedure
+# Test URL
 
 proc test_server_url {} {
   set url ${::tms.url}
@@ -1897,7 +1888,7 @@ proc selection_ok {} {
   return 1
 }
 
-# Process start procedure
+# Process start
 
 proc process_start {command process} {
 
@@ -1932,7 +1923,7 @@ proc process_start {command process} {
 
 }
 
-# Process kill procedure
+# Process kill
 
 proc process_kill {process} {
 
@@ -1949,13 +1940,13 @@ proc process_kill {process} {
 
 }
 
-# Check if process is running procedure
+# Check if process is running
 
 proc process_running {srv} {
   return [namespace exists $srv]
 }
 
-# Mapsforge hillshading server start procedure
+# Mapsforge hillshading server start
 
 proc srv_start {srv} {
 
@@ -2049,7 +2040,7 @@ proc srv_start {srv} {
   if {$::server_version >= 1900} {lappend command -term}
 
   puti "[mc m54 $name] ..."
-  puts "[join [lmap item $command {regsub {^(.* +.*|())$} $item {"\1"}}]]"
+  puts "[get_shell_command $command]"
 
   process_start $command ovl
 
@@ -2072,7 +2063,7 @@ proc srv_start {srv} {
 
 }
 
-# Mapsforge hillshading server stop procedure
+# Mapsforge hillshading server stop
 
 proc srv_stop {srv} {
 
@@ -2085,7 +2076,7 @@ proc srv_stop {srv} {
     set url "http://127.0.0.1:${port}/terminate"
     if {![catch {::http::geturl $url} token]} {
       if {[::http::status $token] == "eof"} {set code 200} \
-      else {set code [::http::ncode $token]}
+     else {set code [::http::ncode $token]}
       if {$code != 200} {process_kill $srv}
       ::http::cleanup $token
     }
@@ -2461,7 +2452,7 @@ proc run_render_job {} {
     set ::env(MAGICK_TEMPORARY_PATH) $folder
   }
 
-  # Batch processing procedure
+  # Batch processing
 
   proc batch_proc {exe args} {
     lappend cmd $exe {*}$args
