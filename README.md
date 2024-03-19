@@ -17,7 +17,7 @@ Resource files are named _TMS-to-Tiles.<locale\>_, where _<locale\>_ matches loc
 Downloaded tiles may optionally be composed to an image.  
 
 Screenshot of graphical user interface: 
-![GUI_Windows](https://user-images.githubusercontent.com/62614244/217317142-c0e9c73e-73a6-46fc-9a0e-aa959c4e04cc.png)
+![GUI](https://github.com/JFritzle/TMS-to-Tiles/assets/62614244/f7c4f587-34c5-4c5c-9b9b-927a98eab215)
 
 
 ### Installation
@@ -30,6 +30,7 @@ Linux: If not yet installed, install Java runtime package using Linux package ma
 Open [mapsforgesrv](https://github.com/telemaxx/mapsforgesrv) repository.  
 For Java version 11 or higher, switch branch to _master_, navigate to folder _mapsforgesrv/bin/jars_ready2use_ and download jar file [_mapsforgesrv-fatjar.jar_](https://github.com/telemaxx/mapsforgesrv/raw/master/mapsforgesrv/bin/jars_ready2use/mapsforgesrv-fatjar.jar).  
 For Java version 8 (or higher), switch branch to _Java8_, navigate to folder _mapsforgesrv/bin/jars_ready2use_ and download jar file [_mapsforgesrv4java8.jar_](https://github.com/telemaxx/mapsforgesrv/raw/Java8/mapsforgesrv/bin/jars_ready2use/mapsforgesrv4java8.jar).  
+Same jar files are also provided as assets via [Releases](https://github.com/telemaxx/mapsforgesrv/releases).  
 Windows: Copy downloaded jar file into Mapsforge tile server’s installation folder, e.g. into folder _%programfiles%/MapsforgeSrv_.  
 Linux: Copy downloaded jar file into Mapsforge tile server’s installation folder, e.g. into folder _~/MapsforgeSrv_.  
 Note:  
@@ -43,9 +44,9 @@ Windows: Copy downloaded jar file(s) into Mapsforge tile server’s installation
 Linux: Copy downloaded jar file(s) into Mapsforge tile server’s installation folder, e.g. into folder _~/MapsforgeSrv_.  
 
 4.	Tcl/Tk scripting language version 8.6 or higher binaries  
-Windows: Download and install latest stable version of Tcl/Tk, currently 8.6.13. See https://wiki.tcl-lang.org/page/Binary+Distributions for available binary distributions. Recommended Windows binary distribution is from [teclab’s tcltk](https://gitlab.com/teclabat/tcltk/-/packages) Windows repository. Select most recent installation file _tcltk86-8.6.13.\<number>.Win10.nightly.\<date>.tgz_. Unpack zipped tar archive (file extension _.tgz_) into your Tcl/Tk installation folder, e.g. _%programfiles%/Tcl_.  
+Windows: Download and install latest stable version of Tcl/Tk, currently 8.6.14. See https://wiki.tcl-lang.org/page/Binary+Distributions for available binary distributions. Recommended Windows binary distribution is from [teclab’s tcltk](https://gitlab.com/teclabat/tcltk/-/packages) Windows repository. Select most recent installation file _tcltk86-8.6.14.\<number>.Win10.nightly.\<date>.tgz_. Unpack zipped tar archive (file extension _.tgz_) into your Tcl/Tk installation folder, e.g. _%programfiles%/Tcl_.  
 Note: [7-Zip](https://www.7-zip.org) file archiver/extractor is able to unpack _.tgz_ archives.  
-Linux: Install packages _tcl, tcllib, tk_, _tklib_ and _tcl-tls_ using Linux package manager. Package _tklib_ is required for tooltips and package _tcl-tls_ is required to connect to servers via HTTPS protocol (Ubuntu: _apt install tcl tcllib tk tklib tcl-tls_)
+Linux: Install packages _tcl, tcllib, tcl-thread, tk_ and _tklib_ using Linux package manager. Since Tcl script now uses threads, package _tcl-thread_ is required. In addition, package _tklib_ is required for using tooltips.  (Ubuntu: _apt install tcl tcllib tcl-thread tk tklib_)
 
 5. GraphicsMagick and/or ImageMagick  
 At least one installation of either GraphicsMagick or ImageMagick is required!  
@@ -64,15 +65,15 @@ Linux: If not yet installed, install ImageMagick package using Linux package man
 When Linux package managers do only install versions older than version 7 by default, then [installation from source](https://imagemagick.org/script/install-source.php) may be required. Default is to build Q16 variant. Use _./configure \-\-with-quantum-depth=8_ to build Q8 variant.  
 Note: ImageMagick resource limits are hard-coded in Tcl script file, but can be adjusted in section _Set resource limits of ImageMagick_ if needed.  
 
-6. curl (optional)  
+6. curl   
+If not yet available, installation of curl is required!  
 Windows: Starting with version 10, a suitable _curl_ is part of Windows and is to be found as _C:\Windows\System32\curl.exe_. If however desired, latest curl version is available at curl's [download section](https://curl.se/download.html). An alternative installation path for _curl.exe_ can be specified in the ini file.  
 Linux: If not yet installed, install curl package using Linux package manager. (Ubuntu: _apt install curl_)  
-Note: In particular when downloading many tiles, curl may download significantly faster than downloading by the Tcl built-in http package.
 
 7. DEM data (optional, required for hillshading)  
 Download and store DEM (Digital Elevation Model) data for the regions to be rendered.
 Notes:  
-Either HGT files or ZIP archives containing 1 equally named HGT file may be supplied.  
+Either HGT files or ZIP archives containing 1 single equally named HGT file may be supplied.  
 Example: ZIP archive N49E008.zip containing 1 single HGT file N49E008.hgt.  
 While 1\" (arc second) resolution DEM data have a significantly higher accuracy than 3\" resolution, hillshading assumes significantly much more time. Therefore 3\" resolution usually is better choice.  
     

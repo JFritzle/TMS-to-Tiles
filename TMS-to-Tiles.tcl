@@ -10,38 +10,200 @@
 #   where file extension "tcl" is replaced by
 #   2 lowercase letters ISO 639-1 code, e.g. "en"
 
-# Potentially switch from "tclsh" to "wish" shell
+# Force file encoding "utf-8"
+# Usually required for Tcl/Tk version < 9.0 on Windows!
 
-set shell [info nameofexecutable]
-if {[string first tclsh $shell] != -1} {
-  regsub -- {tclsh} $shell {wish} shell
-  regsub -all -- {\\} $argv0 {/} argv0
-  if {[catch "exec {$shell} {$argv0} $argv &" result]} {puts "Error: $result"}
-  exit 0
+if {[encoding system] != "utf-8"} {
+   encoding system utf-8
+   exit [source $argv0]
 }
 
-set script [file normalize [info script]]
-set cwd [pwd]
-encoding system utf-8
-
-if {$tcl_version <  9.0} {set home [file normalize ~]}
-if {$tcl_version >= 9.0} {set home [file tildeexpand ~]}
-
+if {![info exists tk_version]} {package require Tk}
 wm withdraw .
 
-# Required packages and procedure aliases
+set script [file normalize [info script]]
+set title [file tail $script]
+set cwd [pwd]
 
-package require msgcat
-package require tooltip
-package require http
-package require uri
-package require fileutil
+# Required packages
 
+foreach item {Thread msgcat tooltip http uri fileutil} {
+  if {[catch "package require $item"]} {
+    ::tk::MessageBox -title $title -icon error \
+	-message "Could not load required Tcl package '$item'" \
+	-detail "Please install missing $tcl_platform(os) package!"
+    exit
+  }
+}
+
+# Procedure aliases
+
+interp alias {} ::send {} ::thread::send
 interp alias {} ::mc {} ::msgcat::mc
 interp alias {} ::messagebox {} ::tk::MessageBox
-interp alias {} ::combobox {} ::ttk::combobox
 interp alias {} ::tooltip {} ::tooltip::tooltip
 interp alias {} ::filetype {} ::fileutil::fileType
+interp alias {} ::style {} ::ttk::style
+interp alias {} ::button {} ::ttk::button
+interp alias {} ::checkbutton {} ::ttk::checkbutton
+interp alias {} ::combobox {} ::ttk::combobox
+interp alias {} ::radiobutton {} ::ttk::radiobutton
+interp alias {} ::scrollbar {} ::ttk::scrollbar
+
+# Define color palette
+
+namespace eval color {}
+foreach {item value} {
+Background #f0f0f0
+ButtonHighlight #ffffff
+Border #a0a0a0
+ButtonText #000000
+DisabledText #6d6d6d
+Focus #e0e0e0
+Highlight #0078d7
+HighlightText #ffffff
+InfoBackground #ffffe1
+InfoText #000000
+Trough #c8c8c8
+Window #ffffff
+WindowFrame #646464
+WindowText #000000
+} {set color::$item $value}
+
+# Global widget options
+
+foreach {item value} {
+background Background
+foreground ButtonText
+activeBackground Background
+activeForeground ButtonText
+disabledBackground Background
+disabledForeground DisabledText
+highlightBackground Background
+highlightColor WindowFrame
+readonlyBackground Background
+selectBackground Highlight
+selectForeground HighlightText
+selectColor Window
+troughColor Trough
+Entry.background Window
+Entry.foreground WindowText
+Entry.insertBackground WindowText
+Entry.highlightColor WindowFrame
+Listbox.background Window
+Listbox.highlightColor WindowFrame
+Tooltip.Label.background InfoBackground
+Tooltip.Label.foreground InfoText
+} {option add *$item [set color::$value]}
+
+set dialog.wrapLength [expr [winfo screenwidth .]/2]
+foreach {item value} {
+Dialog.msg.wrapLength ${dialog.wrapLength}
+Dialog.dtl.wrapLength ${dialog.wrapLength}
+Dialog.msg.font TkDefaultFont
+Dialog.dtl.font TkDefaultFont
+Entry.highlightThickness 1
+Label.borderWidth 1
+Label.padX 0
+Label.padY 0
+Labelframe.borderWidth 0
+Scale.highlightThickness 1
+Scale.showValue 0
+Scale.takeFocus 1
+Tooltip.Label.padX 2
+Tooltip.Label.padY 2
+} {eval option add *$item $value}
+
+# Global ttk widget options
+
+style theme use clam
+
+if {$tcl_version > 8.6} {
+  if {$tcl_platform(os) == "Windows NT"} \
+	{lassign {23 41 101 69 120} ry ul ll cy ht}
+  if {$tcl_platform(os) == "Linux"} \
+	{lassign { 3 21  81 49 100} ry ul ll cy ht}
+  set CheckOff "
+	<rect width='94' height='94' x='3' y='$ry'
+	style='fill:white;stroke-width:3;stroke:black'/>
+	"
+  set CheckOn "
+	<rect width='94' height='94' x='3' y='$ry'
+	style='fill:white;stroke-width:3;stroke:black'/>
+	<path d='M20 $ll L80 $ul M20 $ul L80 $ll'
+	style='fill:none;stroke:black;stroke-width:14;stroke-linecap:round'/>
+	"
+  set RadioOff "
+	<circle cx='49' cy='$cy' r='47'
+	fill='white' stroke='black' stroke-width='3'/>
+	"
+  set RadioOn "
+	<circle cx='49' cy='$cy' r='37'
+	fill='black' stroke='white' stroke-width='20'/>
+	<circle cx='49' cy='$cy' r='47'
+	fill='none' stroke='black' stroke-width='3'/>
+	"
+  foreach item {CheckOff CheckOn RadioOff RadioOn} \
+    {image create photo $item \
+	-data "<svg width='125' height='$ht'>[set $item]</svg>"}
+
+  foreach item {Check Radio} {
+    style element create ${item}button.sindicator image \
+	[list ${item}Off selected ${item}On]
+    style layout T${item}button \
+	[regsub indicator [style layout T${item}button] sindicator]
+  }
+}
+
+if {$tcl_platform(os) == "Windows NT"} \
+	{lassign {1 1} yb yc}
+if {$tcl_platform(os) == "Linux"} \
+	{lassign {0 2} yb yc}
+foreach {item option value} {
+. background $color::Background
+. bordercolor $color::Border
+. focuscolor $color::Focus
+. darkcolor $color::WindowFrame
+. lightcolor $color::Window
+. troughcolor $color::Trough
+. selectbackground $color::Window
+. selectforeground $color::WindowText
+TButton borderwidth 2
+TButton padding "{0 -2 0 $yb}"
+TCombobox arrowsize 15
+TCombobox padding 0
+TCheckbutton padding "{0 $yc}"
+TRadiobutton padding "{0 $yc}"
+} {eval style configure $item -$option [eval set . \"$value\"]}
+
+foreach {item option value} {
+TButton darkcolor {pressed $color::Window}
+TButton lightcolor {pressed $color::WindowFrame}
+TButton background {focus $color::Focus pressed $color::Focus}
+TCombobox background {focus $color::Focus pressed $color::Focus}
+TCombobox bordercolor {focus $color::WindowFrame}
+TCombobox selectbackground {focus $color::Highlight}
+TCombobox selectforeground {focus $color::HighlightText}
+TCheckbutton background {focus $color::Focus}
+TRadiobutton background {focus $color::Focus}
+Arrow.TButton bordercolor {focus $color::WindowFrame}
+} {style map $item -$option [eval list {*}$value]}
+
+# Global button bindings
+
+foreach item {TButton TCheckbutton TRadiobutton} \
+	{bind $item <Return> {%W invoke}}
+bind TCombobox <Return> {event generate %W <Button-1>}
+
+# Bitmap arrow down
+
+image create bitmap ArrowDown -data {
+  #define x_width 9
+  #define x_height 7
+  static char x_bits[] = {
+  0x00,0xfe,0x00,0xfe,0xff,0xff,0xfe,0xfe,0x7c,0xfe,0x38,0xfe,0x10,0xfe
+  };
+}
 
 # Try using system locale for script
 # If corresponding localized file does not exist, try locale "en" (English)
@@ -64,7 +226,7 @@ foreach suffix $list {
   set file $prefix.$suffix
   if {[file exists $file]} {
     if {[catch {source $file} result]} {
-      messagebox -title [file tail $script] -icon error \
+      messagebox -title $title -icon error \
 	-message "Error reading locale file '[file tail $file]':\n$result"
       exit
     }
@@ -74,7 +236,7 @@ foreach suffix $list {
   }
 }
 if {![info exists locale]} {
-  messagebox -title [file tail $script] -icon error \
+  messagebox -title $title -icon error \
 	-message "No locale file '[file tail $file]' found"
   exit
 }
@@ -86,12 +248,12 @@ set file [file rootname $script].ini
 
 if {[file exist $file]} {
   if {[catch {source $file} result]} {
-    messagebox -title [file tail $script] -icon error \
+    messagebox -title $title -icon error \
 	-message "[mc i00 [file tail $file]]:\n$result"
     exit
   }
 } else {
-  messagebox -title [file tail $script] -icon error \
+  messagebox -title $title -icon error \
 	-message "[mc i01 [file tail $file]]"
   exit
 }
@@ -116,7 +278,11 @@ foreach item $list {
   if {$tcl_version >= 9.0} {set value [file tildeexpand $value]}
   if {[lsearch -exact $cmds $item] != -1} {
     set exec [auto_execok $value]
-    if {$exec != ""} {set value [lindex $exec 0]}
+    if {$exec == ""} {
+      messagebox -title $title -icon error -message [mc e04 $value $item]
+      exit
+    }
+    set value [lindex $exec 0]
   }
   switch [file pathtype $value] {
     absolute		{set $item [file normalize $value]}
@@ -129,12 +295,13 @@ cd $cwd
 
 # Restore saved settings from folder ini_folder
 
-if {![info exists ini_folder]} {set ini_folder $home/.Mapsforge}
+if {![info exists ini_folder]} {set ini_folder $env(HOME)/.Mapsforge}
 file mkdir $ini_folder
 
 set maps.contrast 0
 set maps.gamma 1.00
 set font.size [font configure TkDefaultFont -size]
+set console.show 0
 set console.geometry ""
 set console.font.size 8
 
@@ -153,11 +320,14 @@ set tcp.maxconn 256
 set threads.min 0
 set threads.max 8
 
-set use.curl 0
 set use.magick "gm"
 set tiles.folder $cwd
-set tiles.abort 0
+set tiles.abort 1
+set tiles.compose 1
+set tiles.keep 0
+set composed.show 1
 # For compatibility only:
+set use.curl 1
 set tiles.write 1
 set http.keep 0
 set http.wait 0
@@ -190,10 +360,8 @@ for {set i 0} {$i<21} {incr i} {
 
 # Restore saved font sizes
 
-foreach item {TkDefaultFont TkTextFont TkFixedFont} {
-  font configure $item -size ${font.size}
-}
-option add *Scale.Width [expr 6+${font.size}]
+foreach item {TkDefaultFont TkTextFont TkFixedFont TkTooltipFont} \
+	{font configure $item -size ${font.size}}
 
 # Configure main window
 
@@ -201,152 +369,121 @@ set title [mc l01]
 wm title . $title
 wm protocol . WM_DELETE_WINDOW "set action 0"
 wm resizable . 0 0
-. configure -bd 5
-
-bind Button <Return> {%W invoke}
-bind Checkbutton <Return> {%W invoke}
-
-set dialog.wrapLength [expr [winfo screenwidth .]/2]
-foreach {name value} {
-*Button.borderWidth 2
-*Button.highlightThickness 1
-*Button.padX 0
-*Button.padY 0
-*Button.takeFocus 1
-*Checkbutton.anchor w
-*Checkbutton.borderWidth 0
-*Checkbutton.padX 0
-*Checkbutton.padY 0
-*Checkbutton.takeFocus 1
-*Dialog.msg.wrapLength ${dialog.wrapLength}
-*Dialog.dtl.wrapLength ${dialog.wrapLength}
-*Dialog.msg.font TkDefaultFont
-*Dialog.dtl.font TkDefaultFont
-*Label.borderWidth 1
-*Label.padX 0
-*Label.padY 0
-*Labelframe.borderWidth 0
-*Radiobutton.borderWidth 0
-*Radiobutton.padX 0
-*Radiobutton.padY 0
-*Scale.highlightThickness 1
-*Scale.showValue 0
-*Scale.takeFocus 1
-*Scrollbar.takeFocus 0
-*TCombobox.takeFocus 1
-} {eval option add $name $value}
-
-ttk::style configure TCombobox -padding 1
-
-# Bitmap arrow down
-
-set arrow_down [image create bitmap -data {
-  #define down_arrow_width 12
-  #define down_arrow_height 12
-  static char down_arrow_bits[] = {
-    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,
-    0xfc,0xf1,0xf8,0xf0,0x70,0xf0,0x20,0xf0,
-    0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00;
-  }
-}]
+. configure -bd 5 -bg $color::Background
 
 # Output console window
 
 set console 0;			# Valid values: 0=hide, 1=show, -1=disabled
 
-toplevel .console
-wm withdraw .console
-wm title .console "$title - [mc l99]"
-set family [lsearch -nocase -exact -inline [font families] Consolas]
-if {$family == ""} {set family [font configure TkFixedFont -family]}
-font create console_font -family $family -size ${console.font.size}
-text .console.txt -font console_font -wrap none -setgrid 1 -state disabled \
-	-width 120 -xscrollcommand {.console.sbx set} \
-	-height 24 -yscrollcommand {.console.sby set}
-scrollbar .console.sbx -orient horizontal -command {.console.txt xview}
-scrollbar .console.sby -orient vertical   -command {.console.txt yview}
-grid .console.txt -row 1 -column 1 -sticky nswe
-grid .console.sby -row 1 -column 2 -sticky ns
-grid .console.sbx -row 2 -column 1 -sticky we
-grid columnconfigure .console 1 -weight 1
-grid rowconfigure    .console 1 -weight 1
+set ctid [thread::create -joinable "
+  package require Tk
+  wm withdraw .
+  wm title . \"$title - [mc l99]\"
+  set font_size ${console.font.size}
+  set geometry {${console.geometry}}
+  ttk::style theme use clam
+  ttk::style configure . -border $color::Border -troughcolor $color::Trough
+  thread::wait
+  "]
 
-bind .console.txt <Control-a> {%W tag add sel 1.0 end;break}
-bind .console.txt <Control-c> {tk_textCopy %W;break}
-bind .console <Control-plus>  {incr_console_font_size +1}
-bind .console <Control-minus> {incr_console_font_size -1}
-bind .console <Control-KP_Add>      {incr_console_font_size +1}
-bind .console <Control-KP_Subtract> {incr_console_font_size -1}
+send $ctid {
+  foreach item {Consolas "Ubuntu Mono" "Noto Mono" "Liberation Mono"
+  	[font configure TkFixedFont -family]} {
+    set family [lsearch -nocase -exact -inline [font families] $item]
+    if {$family != ""} {break}
+  }
+  font create font -family $family -size $font_size
+  text .txt -font font -wrap none -setgrid 1 -state disabled \
+	-width 120 -xscrollcommand {.sbx set} \
+	-height 24 -yscrollcommand {.sby set}
+  ttk::scrollbar .sbx -orient horizontal -command {.txt xview}
+  ttk::scrollbar .sby -orient vertical   -command {.txt yview}
+  grid .txt -row 1 -column 1 -sticky nswe
+  grid .sby -row 1 -column 2 -sticky ns
+  grid .sbx -row 2 -column 1 -sticky we
+  grid columnconfigure . 1 -weight 1
+  grid rowconfigure    . 1 -weight 1
 
-bind .console <Configure> {
-  if {"%W" != [winfo toplevel %W]} {continue}
-  scan [wm geometry %W] "%%dx%%d+%%d+%%d" cols rows x y
-  set console.geometry "$x $y $cols $rows"
-}
+  bind .txt <Control-a> {%W tag add sel 1.0 end;break}
+  bind .txt <Control-c> {tk_textCopy %W;break}
+  bind . <Control-plus>  {incr_font_size +1}
+  bind . <Control-minus> {incr_font_size -1}
+  bind . <Control-KP_Add>      {incr_font_size +1}
+  bind . <Control-KP_Subtract> {incr_font_size -1}
 
-proc incr_console_font_size {incr} {
-  set size [font configure console_font -size]
-  incr size $incr
-  if {$size < 5 || $size > 20} {return}
-  font configure console_font -size $size
-}
+  bind . <Configure> {
+    if {"%W" != "."} {continue}
+    scan [wm geometry %W] "%%dx%%d+%%d+%%d" cols rows x y
+    set geometry "$x $y $cols $rows"
+  }
 
-proc puts_console args {
-  set len [llength $args]
-  foreach {arg1 arg2 arg3} $args {break}
-  if {$len == 1} {
-    set txt "$arg1\n"
-  } elseif {$len == 2} {
-    if {$arg1 == "-nonewline"} {
-      set txt $arg2
-    } elseif {$arg1 == "stdout"||$arg1 == "stderr"} {
-      set txt "$arg2\n"
+  proc incr_font_size {incr} {
+    set px [.txt xview]
+    set py [.txt yview]
+    set size [font configure font -size]
+    incr size $incr
+    if {$size < 5 || $size > 20} {return}
+    font configure font -size $size
+    update idletasks
+    .txt xview moveto [lindex $px 0]
+    .txt yview moveto [lindex $py 0]
+  }
+
+  proc write {text} {
+    .txt configure -state normal
+    if {[string index "$text" 0] == "\r"} {
+      set text [string range "$text" 1 end]
+      .txt delete end-2l end-1l
     }
-  } elseif {$len == 3} {
-    if {$arg1 == "-nonewline" && ($arg2 == "stdout"||$arg2 == "stderr")} {
-      set txt $arg3
-    } elseif {($arg1 == "stdout"||$arg1 == "stderr") && $arg3 == "nonewline"} {
-      set txt $arg2
+    .txt insert end "$text"
+    .txt configure -state disabled
+    .txt see end
+  }
+
+  proc show_hide {show} {
+    if {$show} {
+      if {$::geometry == ""} {
+	wm deiconify .
+      } else {
+	lassign $::geometry x y cols rows
+	if {$x > [expr [winfo vrootx .]+[winfo vrootwidth .]] ||
+	    $x < [winfo vrootx .]} {set x [winfo vrootx .]}
+	wm positionfrom . program
+	wm geometry . ${cols}x${rows}+$x+$y
+	wm deiconify .
+	wm geometry . +$x+$y
+      }
+    } else {
+      wm withdraw .
     }
   }
-  if {[info exists txt]} {
-    .console.txt configure -state normal
-    if {[string index $txt 0] == "\r"} {
-      set txt [string range $txt 1 end]
-      .console.txt delete end-2l end-1l
-    }
-    .console.txt insert end $txt
-    .console.txt configure -state disabled
-    if {[winfo ismapped .console]} {
-      .console.txt see end
-      update idletasks
-    }
-  } else {
-    global errorCode errorInfo
-    if {[catch "puts_tcl $args" msg]} {
-      regsub puts_tcl $msg puts msg
-      regsub -all puts_tcl $errorInfo puts errorInfo
-      return -code error $msg
-    }
-    return $msg
-  }
+
+  lassign [chan pipe] fdi fdo
+  thread::detach $fdo
+  fconfigure $fdi -blocking 0 -buffering line -translation lf
+  fileevent $fdi readable "
+    while {\[gets $fdi line\] >= 0} {write \"\$line\\n\"}
+  "
 }
 
 if {$console != -1} {
-  rename ::puts ::puts_tcl
-  interp alias {} ::puts {} ::puts_console
-  interp alias {} ::tcl::chan::puts {} ::puts_console
+  set fdo [send $ctid "set fdo"]
+  thread::attach $fdo
+  fconfigure $fdo -blocking 0 -buffering line -translation lf
+  interp alias {} ::cputs {} ::puts $fdo
+} else {
+  interp alias {} ::cputs {} ::puts
 }
 
 if {$console == 1} {
   set console.show 1
-  wm deiconify .console
+  send $::ctid "show_hide 1"
 }
 
 # Mark output message
 
-proc puti {text} {puts "\[---\] $text"}
-proc putw {text} {puts "\[+++\] $text"}
+proc cputi {text} {cputs "\[---\] $text"}
+proc cputw {text} {cputs "\[+++\] $text"}
 
 # Show error message
 
@@ -370,13 +507,6 @@ if {$tcl_platform(os) == "Windows NT"} {
 	{HKEY_CURRENT_USER\Control Panel\International} {LocaleName}]
     set language [regsub {(.*)-(.*)} $language {\1}]
   }
-  # Find libssp-0.dll required by package tls
-  # and prepend it's folder to PATH variable
-  cd [file dirname [file dirname $shell]]
-  set dll libssp-0.dll
-  set rc [catch "exec cmd.exe /c dir $dll /s /b" result]
-  if {!$rc} {set env(PATH) "[regsub $dll $result {}]\;$env(PATH)"}
-  cd $cwd
 } elseif {$tcl_platform(os) == "Linux"} {
   if {$language == ""} {
     set language [regsub {(.*)_(.*)} $env(LANG) {\1}]
@@ -385,18 +515,6 @@ if {$tcl_platform(os) == "Windows NT"} {
 } else {
   error_message [mc e03 $tcl_platform(os)] exit
 }
-
-# Check for tls package required for https protocol
-# Register https protocol
-
-set rc [catch "package require tls" result]
-if {$rc} {
-  messagebox -title $title -icon error \
-	-message "Could not load required Tcl package 'tls'" \
-	-detail [regsub ": " $result ":\n"]
-}
-
-::http::register https 443 [list ::tls::socket -autoservername true]
 
 # Check commands & folders
 
@@ -421,10 +539,10 @@ if {!$rc} {
   set java_string $data
   if {[regsub {^1\.([1-9]+)\.[0-9]+.*$} $java_string {\1} data] > 0} {
     set java_version $data; # Oracle Java version <= 8
-  } elseif {[regsub {^([1-9][0-9]*)((\.0)*\.[1-9][0-9]*)*$} $java_string \
-	{\1} data] > 0} {
+  } elseif {[regsub {^([1-9][0-9]*)((\.0)*\.[1-9][0-9]*)*([+-].*)?$} \
+	$java_string {\1} data] > 0} {
     set java_version $data; # Other Java versions >= 9
-  }  	
+  }
 }
 
 if {$rc || $java_version == 0} \
@@ -457,17 +575,13 @@ if {$server_version < 1704 } \
 set curl ""
 if {[info exists curl_cmd] && $curl_cmd != ""} {set curl $curl_cmd}
 if {$curl == ""} {set curl [lindex [auto_execok curl] 0]}
+if {$curl == ""} {error_message "[mc e10]" exit}
 
-if {$curl != ""} {
-  catch "exec {$curl} -V" data
-  set string [lindex [split $data] 1]
-  set curl_version [split $string .]
-  set curl_version [expr 1000*[lindex $curl_version 0]+[lindex $curl_version 1]]
-  if {$curl_version < 7075} {
-    puts "[mc e07 curl $string 7.75.0]"
-    set curl ""
-  }
-}
+catch "exec {$curl} -V" data
+set string [lindex [split $data] 1]
+set curl_version [split $string .]
+set curl_version [expr 1000*[lindex $curl_version 0]+[lindex $curl_version 1]]
+if {$curl_version < 7075} {error_message "[mc e07 curl $string 7.75.0]" exit}
 
 # Looking for installed GraphicsMagick's tool "gm"
 
@@ -503,7 +617,7 @@ if {$gm != ""} {
 # set env(MAGICK_LIMIT_PIXELS)	"1GiB"
 
 # catch "exec {$gm} convert -list Resource" result
-# puts "[file tail $gm] - $result\n"
+# cputs "[file tail $gm] - $result\n"
 }
 
 # Looking for installed ImageMagick's tool "magick"
@@ -556,7 +670,7 @@ if {$magick != ""} {
   set env(MAGICK_CONFIGURE_PATH) $ini_folder
 
 # catch "exec {$magick} -list Resource" result
-# puts "[file tail $magick] - $result\n"
+# cputs "[file tail $magick] - $result\n"
 }
 
 if {$gm == "" && $magick == ""} {error_message [mc e09] exit}
@@ -666,17 +780,17 @@ pack .coord -in .r -fill x
 
 foreach item {tiles coord} {
   set widget .${item}
-  label $widget.xminl -text "X min"
+  label $widget.xminl -text "X min:"
   entry $widget.xmine -textvariable ${item}.xmin -justify right -width 12
-  label $widget.xmaxl -text "X max"
+  label $widget.xmaxl -text "X max:"
   entry $widget.xmaxe -textvariable ${item}.xmax -justify right -width 12
   grid $widget.xminl -in $widget -row 1 -column 1 -sticky w
   grid $widget.xmine -in $widget -row 1 -column 2 -sticky w
   grid $widget.xmaxl -in $widget -row 1 -column 3 -sticky e
   grid $widget.xmaxe -in $widget -row 1 -column 4 -sticky e
-  label $widget.yminl -text "Y min"
+  label $widget.yminl -text "Y min:"
   entry $widget.ymine -textvariable ${item}.ymin -justify right -width 12
-  label $widget.ymaxl -text "Y max"
+  label $widget.ymaxl -text "Y max:"
   entry $widget.ymaxe -textvariable ${item}.ymax -justify right -width 12
   grid $widget.yminl -in $widget -row 2 -column 1 -sticky w
   grid $widget.ymine -in $widget -row 2 -column 2 -sticky w
@@ -701,14 +815,14 @@ proc scale_zoom {zoom} {
   set tmax [expr (1<<$zoom)-1]
   set xmax 180
   set ymax 85.0511
-  set tiles_xmin "X min \u2265 0 ([mc t21 0 $xmax°])"
-  set tiles_xmax "X max \u2264 $tmax ([mc t22 $tmax $xmax°])"
-  set tiles_ymin "Y min \u2265 0 ([mc t23 0 $ymax°])"
-  set tiles_ymax "Y max \u2264 $tmax ([mc t24 $tmax $ymax°])"
-  set coord_xmin "X min \u2265 -$xmax ([mc t21 0 $xmax°])"
-  set coord_xmax "X max \u2264 +$xmax ([mc t22 $tmax $xmax°])"
-  set coord_ymin "Y min \u2265 -$ymax ([mc t24 $tmax $ymax°])"
-  set coord_ymax "Y max \u2264 +$ymax ([mc t23 0 $ymax°])"
+  set tiles_xmin "X min ≥ 0 ([mc t21 0 $xmax°])"
+  set tiles_xmax "X max ≤ $tmax ([mc t22 $tmax $xmax°])"
+  set tiles_ymin "Y min ≥ 0 ([mc t23 0 $ymax°])"
+  set tiles_ymax "Y max ≤ $tmax ([mc t24 $tmax $ymax°])"
+  set coord_xmin "X min ≥ -$xmax ([mc t21 0 $xmax°])"
+  set coord_xmax "X max ≤ +$xmax ([mc t22 $tmax $xmax°])"
+  set coord_ymin "Y min ≥ -$ymax ([mc t24 $tmax $ymax°])"
+  set coord_ymax "Y max ≤ +$ymax ([mc t23 0 $ymax°])"
   foreach item {tiles coord} {
     set widget .${item}
     eval tooltip $widget.xmine "\$${item}_xmin"
@@ -838,15 +952,24 @@ proc validate_coord {widget coord} {
 
 scale_zoom ${zoom.level}
 
+# Show tile server's URL
+
+labelframe .tms_url -labelanchor nw -text [mc l11]:
+pack .tms_url -in .r -fill x -expand 1 -pady 1
+entry .tms_url_value -textvariable tms.url \
+	-state readonly -takefocus 0 -highlightthickness 0
+pack .tms_url_value -in .tms_url -side left -fill x -expand 1
+
 # Choose folder for tiles and composed image
 
 if {![file isdirectory ${tiles.folder}]} {set tiles.folder $cwd}
 labelframe .tiles_folder -labelanchor nw -text [mc l31]:
 pack .tiles_folder -in .r -fill x -expand 1 -pady 1
 entry .tiles_folder_value -textvariable tiles.folder \
-	-relief sunken -bd 1 -takefocus 0 -state readonly
-button .tiles_folder_button -image $arrow_down -command choose_tiles_folder
-pack .tiles_folder_button -in .tiles_folder -side right -fill y -padx {3 0}
+	-state readonly -takefocus 0 -highlightthickness 0
+button .tiles_folder_button -style Arrow.TButton \
+	-image ArrowDown -command choose_tiles_folder
+pack .tiles_folder_button -in .tiles_folder -side right -fill y
 pack .tiles_folder_value -in .tiles_folder -side left -fill x -expand 1
 
 proc choose_tiles_folder {} {
@@ -870,16 +993,6 @@ pack .tiles_prefix_value -in .tiles_prefix -side right
   return [regexp {^(\w+[-.]?)*$} %P]
 }
 
-# Use "curl" for download
-
-checkbutton .use_curl -text [mc c30] -variable use.curl
-pack .use_curl -in .r -expand 1 -fill x
-if {$curl == ""} {
-  set use.curl 0
-  .use_curl configure -state disabled
-  tooltip .use_curl [mc c30t]
-}
-
 # Abort HTTP requests at error condition
 
 checkbutton .tiles_abort -text [mc c31] \
@@ -888,9 +1001,9 @@ pack .tiles_abort -in .r -expand 1 -fill x
 
 # Use GraphicsMagick or ImageMagick for composition
 
-radiobutton .use_gmagick -text [mc c32 GraphicsMagick] -anchor w \
+radiobutton .use_gmagick -text [mc c32 GraphicsMagick] \
 	-variable use.magick -value "gm"
-radiobutton .use_imagick -text [mc c32 ImageMagick] -anchor w \
+radiobutton .use_imagick -text [mc c32 ImageMagick] \
 	-variable use.magick -value "magick"
 pack .use_gmagick .use_imagick -in .r -expand 1 -fill x
 
@@ -939,8 +1052,8 @@ pack .show_composed -in .tiles_compose_onoff -expand 1 -fill x
 frame .buttons
 button .buttons.continue -text [mc b01] -width 12 -command {set action 1}
 button .buttons.cancel -text [mc b02] -width 12 -command {set action 0}
-pack .buttons -after .r -anchor n -ipady 5
 pack .buttons.continue .buttons.cancel -side left
+pack .buttons -after .r -anchor n -pady 5
 
 focus .buttons.continue
 
@@ -948,10 +1061,10 @@ proc busy_state {state} {
   set busy {.l .r .buttons.continue .shading .effects .server .tmsserver}
   if {$state} {
     foreach item $busy {tk busy hold $item}
-    .buttons.continue configure -relief sunken
-    .buttons.cancel configure -text [mc b03] -command {set cancel 1}
+    .buttons.continue state pressed
+    .buttons.cancel configure -text [mc b03] -command cancel_render_job
   } else {
-    .buttons.continue configure -relief raised
+    .buttons.continue state !pressed
     .buttons.cancel configure -text [mc b02] -command {set action 0}
     foreach item $busy {tk busy forget $item}
   }
@@ -964,46 +1077,24 @@ checkbutton .output -text [mc c99] \
 	-variable console.show -command show_hide_console
 
 proc show_hide_console {} {
-  if {${::console.show}} {
-    .console.txt see end
-    if {${::console.geometry} == ""} {
-      wm deiconify .console
-    } else {
-      lassign ${::console.geometry} x y cols rows
-      wm positionfrom .console program
-      wm geometry .console ${cols}x${rows}+$x+$y
-      wm deiconify .console
-      wm geometry .console +$x+$y
-    }
-    if {[winfo ismapped .]} {raise . .console}
-  } else {
-    wm withdraw .console
-  }
+  send $::ctid "show_hide ${::console.show}"
 }
 
 if {$console != -1} {
   pack .output -after .buttons -anchor n -expand 1 -fill x
   show_hide_console
 
-  wm protocol .console WM_DELETE_WINDOW ".output invoke"
   # Map/Unmap events are generated by Windows only!
-  bind .console <Unmap> {if {"%W" == [winfo toplevel %W]} {.output deselect}}
-  bind .console <Map>   {if {"%W" == [winfo toplevel %W]} {.output   select}}
+  set tid [thread::id]
+  send $ctid "
+    wm protocol . WM_DELETE_WINDOW \
+	{thread::send -async $tid {.output invoke}}
+    bind . <Unmap> {if {\"%W\" == \".\"} \
+	{thread::send -async $tid {set console.show 0}}}
+    bind . <Map>   {if {\"%W\" == \".\"} \
+	{thread::send -async $tid {set console.show 1}}}
+  "
 }
-
-# Filler down to bottom right
-
-proc filler_width_right {} {
-  set width 0
-  foreach item {.use_curl .use_gmagick .use_imagick \
-	.tiles_abort .tiles_compose .tiles_keep .show_composed} {
-    set width [expr max($width,[winfo reqwidth $item])]
-  }
-  return $width
-}
-
-frame .fill_r -width [filler_width_right]
-pack .fill_r -in .r -fill y
 
 # --- End of main window right column
 
@@ -1024,18 +1115,19 @@ foreach widget {.shading .effects .server .tmsserver} {
   if {[tk windowingsystem] == "x11"} {wm attributes $widget -type dialog}
 
   bind $widget <Double-ButtonRelease-3> "$parent invoke"
+  set ::$parent 0
 }
 
 # Show/hide toplevel window
 
 proc show_hide_toplevel_window {widget} {
-  set onoff [set ::[${widget}_show_hide cget -variable]]
+  set onoff [set ::${widget}_show_hide]
   if {$onoff} {
     position_toplevel_window $widget
     scan [wm geometry $widget] "%*dx%*d+%d+%d" x y
     wm transient $widget .
     wm deiconify $widget
-    if {[tk windowingsystem] == "x11"} {wm geometry $widget +$x+$y}
+    if {[tk windowingsystem] == "x11"} {after idle "wm geometry $widget +$x+$y"}
   } else {
     scan [wm geometry $widget] "%*dx%*d+%d+%d" x y
     set ::{$widget.dx} [expr $x - [set ::{$widget.x}]]
@@ -1055,8 +1147,8 @@ proc position_toplevel_window {widget} {
   } elseif {[tk windowingsystem] == "x11"} {
     set bdwidth 2
     if {[auto_execok xwininfo] == ""} {
-      putw "Please install program 'xwininfo' by Linux package manager"
-      putw "to evaluate exact window border width."
+      cputw "Please install program 'xwininfo' by Linux package manager"
+      cputw "to evaluate exact window border width."
     } elseif {![catch "exec bash -c \"export LANG=C;xwininfo -id [wm frame .] \
 	| grep Width | cut -d: -f2\"" wmwidth]} {
       set bdwidth [expr ($wmwidth-$width)/2]
@@ -1098,15 +1190,15 @@ foreach widget {. .shading .effects .server .tmsserver} {
 
 # Enable/disable hillshading
 
-checkbutton .shading.onoff -text [mc c80] -variable shading.onoff -width 30
+checkbutton .shading.onoff -text [mc c80] -variable shading.onoff
 pack .shading.onoff -expand 1 -fill x
 
 # Hillshading as separate transparent overlay map only
 
 radiobutton .shading.asmap -text [mc c82] -state disabled \
 	-variable shading.layer -value asmap
-pack .shading.asmap -anchor w
-.shading.asmap select
+pack .shading.asmap -anchor w -fill x
+set .shading.asmap "asmap"
 
 # Choose DEM folder with HGT files
 
@@ -1116,11 +1208,12 @@ labelframe .shading.dem_folder -labelanchor nw -text [mc l81]:
 tooltip .shading.dem_folder [mc l81t]
 pack .shading.dem_folder -fill x -expand 1 -pady 1
 entry .shading.dem_folder_value -textvariable dem.folder \
-	-relief sunken -bd 1 -takefocus 0 -state readonly
+	-state readonly -takefocus 0 -highlightthickness 0
 tooltip .shading.dem_folder_value [mc l81t]
-button .shading.dem_folder_button -image $arrow_down -command choose_dem_folder
+button .shading.dem_folder_button -style Arrow.TButton \
+	-image ArrowDown -command choose_dem_folder
 pack .shading.dem_folder_button -in .shading.dem_folder \
-	-side right -fill y -padx {3 0}
+	-side right -fill y
 pack .shading.dem_folder_value -in .shading.dem_folder \
 	-side left -fill x -expand 1
 
@@ -1148,12 +1241,12 @@ labelframe .shading.simple -labelanchor w -text [mc l84]:
 entry .shading.simple_value1 -textvariable shading.simple.linearity \
 	-width 8 -justify right
 set .shading.simple_value1.minmax {0 1 0.1}
-tooltip .shading.simple_value1 "0 \u2264 [mc l84] \u2264 1"
+tooltip .shading.simple_value1 "0 ≤ [mc l84] ≤ 1"
 label .shading.simple_label2 -text [mc l85]:
 entry .shading.simple_value2 -textvariable shading.simple.scale \
 	-width 8 -justify right
 set .shading.simple_value2.minmax {0 10 0.666}
-tooltip .shading.simple_value2 "0 \u2264 [mc l85] \u2264 10"
+tooltip .shading.simple_value2 "0 ≤ [mc l85] ≤ 10"
 pack .shading.simple_value1 .shading.simple_label2 .shading.simple_value2 \
 	-in .shading.simple -side left -anchor w -expand 1 -fill x -padx {5 0}
 
@@ -1161,7 +1254,7 @@ labelframe .shading.diffuselight -labelanchor w -text [mc l86]:
 entry .shading.diffuselight_value -textvariable shading.diffuselight.angle \
 	-width 8 -justify right
 set .shading.diffuselight_value.minmax {0 90 50.}
-tooltip .shading.diffuselight_value "0 \u2264 [mc l85] \u2264 90"
+tooltip .shading.diffuselight_value "0° ≤ [mc l86] ≤ 90°"
 pack .shading.diffuselight_value -in .shading.diffuselight \
 	-side right -anchor e -expand 1
 
@@ -1181,15 +1274,14 @@ pack .shading.magnitude -expand 1 -fill x
 entry .shading.magnitude_value -textvariable shading.magnitude \
 	-width 8 -justify right
 set .shading.magnitude_value.minmax {0 4 1.}
-tooltip .shading.magnitude_value "0 \u2264 [mc l87] \u2264 4"
+tooltip .shading.magnitude_value "0 ≤ [mc l87] ≤ 4"
 pack .shading.magnitude_value -in .shading.magnitude -anchor e -expand 1
 
 # Reset hillshading algorithm parameters
 
-button .shading.reset -text [mc b92] -width 8 -takefocus 0 \
-	-highlightthickness 0 -command "reset_shading_values"
+button .shading.reset -text [mc b92] -width 8 -command "reset_shading_values"
 tooltip .shading.reset [mc b92t]
-pack .shading.reset -pady {2 0}
+pack .shading.reset -pady {5 0}
 
 proc reset_shading_values {} {
   foreach widget {.shading.simple_value1 .shading.simple_value2 \
@@ -1252,10 +1344,9 @@ grid columnconfigure .effects {1 2} -uniform 1
 
 # Reset visual rendering effects
 
-button .effects.reset -text [mc b92] -width 8 -takefocus 0 \
-	-highlightthickness 0 -command "reset_effects_values"
+button .effects.reset -text [mc b92] -width 8 -command "reset_effects_values"
 tooltip .effects.reset [mc b92t]
-grid .effects.reset -row 99 -column 1 -columnspan 3 -pady {2 0}
+grid .effects.reset -row 99 -column 1 -columnspan 3 -pady {5 0}
 
 proc reset_effects_values {} {
   set ::maps.gamma 1.00
@@ -1291,7 +1382,7 @@ pack .server.version_value -in .server.version \
 labelframe .server.jar -labelanchor nw -text [mc x04]:
 pack .server.jar -expand 1 -fill x -pady 1
 entry .server.jar_value -textvariable server_jar \
-	-relief sunken -bd 1 -takefocus 0 -state readonly
+	-state readonly -takefocus 0 -highlightthickness 0
 pack .server.jar_value -in .server.jar -expand 1 -fill x
 
 # Server configuration
@@ -1341,13 +1432,13 @@ pack .server.interface -expand 1 -fill x -pady {6 1}
 pack .server.interface_values -in .server.interface \
 	-side right -anchor e -expand 1 -padx {3 0}
 
-# Server TCP port number
+# Tile server TCP port number
 
 labelframe .server.port -labelanchor w -text [mc x15]:
 entry .server.port_value -textvariable tcp.port \
 	-width 6 -justify center
 set .server.port_value.minmax "1024 65535 $tcp_port"
-tooltip .server.port_value "1024 \u2264 [mc x15] \u2264 65535"
+tooltip .server.port_value "1024 ≤ [mc x15] ≤ 65535"
 pack .server.port -expand 1 -fill x -pady 1
 pack .server.port_value -in .server.port \
 	-side right -anchor e -expand 1 -padx {3 0}
@@ -1358,7 +1449,7 @@ labelframe .server.maxconn -labelanchor w -text [mc x16]:
 entry .server.maxconn_value -textvariable tcp.maxconn \
 	-width 6 -justify center
 set .server.maxconn_value.minmax {0 {} 256}
-tooltip .server.maxconn_value "[mc x16] \u2265 0"
+tooltip .server.maxconn_value "[mc x16] ≥ 0"
 pack .server.maxconn -expand 1 -fill x -pady 1
 pack .server.maxconn_value -in .server.maxconn \
 	-side right -anchor e -expand 1 -padx {3 0}
@@ -1369,7 +1460,7 @@ labelframe .server.threadsmin -labelanchor w -text [mc x17]:
 entry .server.threadsmin_value -textvariable threads.min \
 	-width 6 -justify center
 set .server.threadsmin_value.minmax {0 {} 0}
-tooltip .server.threadsmin_value "[mc x17] \u2265 0"
+tooltip .server.threadsmin_value "[mc x17] ≥ 0"
 pack .server.threadsmin -expand 1 -fill x -pady {6 1}
 pack .server.threadsmin_value -in .server.threadsmin \
 	-side right -anchor e -expand 1 -padx {3 0}
@@ -1380,17 +1471,16 @@ labelframe .server.threadsmax -labelanchor w -text [mc x18]:
 entry .server.threadsmax_value -textvariable threads.max \
 	-width 6 -justify center
 set .server.threadsmax_value.minmax {4 {} 8}
-tooltip .server.threadsmax_value "[mc x18] \u2265 4"
+tooltip .server.threadsmax_value "[mc x18] ≥ 4"
 pack .server.threadsmax -expand 1 -fill x -pady 1
 pack .server.threadsmax_value -in .server.threadsmax \
 	-side right -anchor e -expand 1 -padx {3 0}
 
 # Reset server configuration
 
-button .server.reset -text [mc b92] -width 8 -takefocus 0 \
-	-highlightthickness 0 -command "reset_server_values"
+button .server.reset -text [mc b92] -width 8 -command "reset_server_values"
 tooltip .server.reset [mc b92t]
-pack .server.reset -pady {2 0}
+pack .server.reset -pady {5 0}
 
 proc reset_server_values {} {
   foreach widget {.server.port_value .server.maxconn_value \
@@ -1422,40 +1512,38 @@ pack .tmsserver.url_value -in .tmsserver.url -fill x -expand 1
 
 label .tmsserver.xmpl -anchor w -text \
   {Example URL: http[s]://host[:port][/path]/{z}/{x}/{y}.png[?query]}
-pack .tmsserver.xmpl -anchor w -pady 1
+pack .tmsserver.xmpl -anchor w -pady 1 -fill x
 
 # Tooltip for example URL
 
 set wtip .tmsserver_xmpl_tooltip
-set bg lightyellow
+set bg $color::InfoBackground
+set fg $color::InfoText
 
-toplevel $wtip -bg black -bd 1
+toplevel $wtip -bd 1 -relief solid
 wm withdraw $wtip
 wm overrideredirect $wtip 1
 
-label $wtip.title -padx 1 -bd 0 -bg $bg -anchor w -text [mc l120]:
+label $wtip.title -bg $bg -fg $fg -padx 2 -anchor w -text [mc l120]:
 pack $wtip.title -fill x
 
 frame $wtip.comp -bg $bg -padx 10
-set comp {"host" "port" "path" "{z}" "{x}" "{y}" "query"}
+set col1 {"host" "port" "path" "{z}" "{x}" "{y}" "query"}
+set col2 {}
 set row 0
-set txt1 [join $comp "\n"]
-set txt2 ""
 while {$row < 7} {
   incr row	
-  append txt2 " ... [mc l12$row]\n"
+  lappend col2 " … [mc l12$row]"
 }
-set col 0
-while {$col < 2} {
-  incr col
-  label $wtip.comp.$col -text [string trimright [set txt$col] "\n"] \
-	-justify left -bd 0 -bg $bg -fg black
+foreach col {1 2} {
+  label $wtip.comp.$col -text [join [set col$col] \n] \
+	-justify left -bd 0 -bg $bg -fg $fg
   grid $wtip.comp.$col -row 1 -column $col
 }
 pack $wtip.comp -fill x
-unset comp txt1 txt2
+unset col1 col2
 
-label $wtip.foot -padx 1 -bd 0 -bg $bg -anchor w -text [mc l129]
+label $wtip.foot -bg $bg -fg $fg -padx 2 -anchor w -text [mc l129]
 pack $wtip.foot -fill x
 
 bind .tmsserver.xmpl <Enter> {
@@ -1485,17 +1573,17 @@ scale .tmsserver.grid.z.scale -from 0 -to 20 -showvalue 0 -variable tms.z \
 	-orient horizontal -length 50 -sliderlength 20
 label .tmsserver.grid.z.value -width 3 -relief sunken -textvariable tms.z
 pack .tmsserver.grid.z.scale .tmsserver.grid.z.value -side left
-pack configure .tmsserver.grid.z.scale -padx {5 0}
+pack configure .tmsserver.grid.z.scale -padx {5 0} -ipadx 5
 grid .tmsserver.grid.z -row 1 -column 2 -sticky we -padx {5 0}
 
 labelframe .tmsserver.grid.x -text "{x}" -labelanchor w
 entry .tmsserver.grid.x.value -justify center -width 9
-pack .tmsserver.grid.x.value -padx {5 0}
+pack .tmsserver.grid.x.value -padx {5 0} -ipadx 5
 grid .tmsserver.grid.x -row 1 -column 3 -sticky we -padx {5 0}
 
 labelframe .tmsserver.grid.y -text "{y}" -labelanchor w
 entry .tmsserver.grid.y.value -justify center -width 9
-pack .tmsserver.grid.y.value -padx {5 0}
+pack .tmsserver.grid.y.value -padx {5 0} -ipadx 5
 grid .tmsserver.grid.y -row 1 -column 4 -sticky we -padx {5 0}
 
 proc tmsserver_test_z {value} {
@@ -1503,7 +1591,7 @@ proc tmsserver_test_z {value} {
   foreach item {x y} {
     set widget .tmsserver.grid.$item.value
     set txtvar tms.a${item}($value)
-    tooltip $widget "0 \u2264 {$item} \u2264 $tmax"
+    tooltip $widget "0 ≤ {$item} ≤ $tmax"
     set ::tms.$item 0
     set ::$widget.minmax "0 $tmax [set ::$txtvar]"
     $widget configure -textvariable $txtvar \
@@ -1542,9 +1630,11 @@ grid .tmsserver.grid.merge -row 3 -column 1 -sticky we
 
 labelframe .tmsserver.grid.file -text [mc l151] -labelanchor w
 entry .tmsserver.grid.file.value -textvariable tms.servers \
-	-relief sunken -bd 1 -takefocus 0 -state readonly
-button .tmsserver.grid.file.button -image $arrow_down -command set_server_file
-pack .tmsserver.grid.file.value .tmsserver.grid.file.button -side left -padx {3 0}
+	-state readonly -takefocus 0 -highlightthickness 0
+button .tmsserver.grid.file.button -style Arrow.TButton \
+	-image ArrowDown -command set_server_file
+pack .tmsserver.grid.file.value .tmsserver.grid.file.button \
+	-side left -fill y
 pack configure .tmsserver.grid.file.value -fill x -expand 1
 pack configure .tmsserver.grid.file.button -fill y
 grid .tmsserver.grid.file -row 3 -column 2 -columnspan 3 -sticky we -padx {5 0}
@@ -1614,7 +1704,7 @@ foreach event {Enter Leave Control-plus Control-minus \
 
 label $wtest.title -padx 1 -bd 0 -anchor w -text [mc l181]:
 grid $wtest.title -row 1 -column 1 -sticky we
-text $wtest.text -padx 1 -bd 1 -relief sunken
+text $wtest.text -padx 1 -bd 1 -relief sunken -bg $color::Window -wrap word
 grid $wtest.text -row 2 -column 1 -sticky we
 label $wtest.image -padx 1 -bd 1 -relief sunken -image ""
 label $wtest.size
@@ -1633,43 +1723,32 @@ proc test_server_url {} {
   set srv ""
   set ::cancel 0
 
+  set tmpfile "$prefix$zoom.$xmin.$ymin.$suffix"
+  catch "file delete $tmpfile"
+
   set logsep ""
   set logfmt "%-17s : %s"
   set fdlog [file tempfile]
 
-  if {${::use.curl}} {
-    set ::curl_echo 0
-    set rc [download_with_curl]
-  } else {
-    set rc [download_with_http]
-  }
+  set ::curl_echo 0
+  set rc [download_with_curl]
 
   seek $fdlog 0
   set log [split [read -nonewline $fdlog] "\n"]
   close $fdlog
 
   set test_result {}
-  if {${::use.curl}} {
-    set url [string trim ${::tms.url}]
-    regsub "\\$?{z}" $url "$zoom" url
-    regsub "\\$?{x}" $url "$xmin" url
-    regsub "\\$?{y}" $url "$ymin" url
-    lappend test_result [list [mc l182] $url]
-    lappend test_result [list "curl error $rc" "$result"]
-    foreach item $log {
-      if {![regexp {^< } $item]} {continue}
-      regexp {^< ([^:]*):?(.*)} $item {} head tail
-      lappend test_result [list $head $tail]
-    }
-  } else {
-    set test_result {}
-    foreach item $log {
-      regexp {^([^:]*):?(.*)} $item {} head tail
-      lappend test_result [list $head $tail]
-    }
+  set url [string trim ${::tms.url}]
+  regsub "\\$?{z}" $url "$zoom" url
+  regsub "\\$?{x}" $url "$xmin" url
+  regsub "\\$?{y}" $url "$ymin" url
+  lappend test_result [list [mc l182] $url]
+  lappend test_result [list "curl return code" "$rc $result"]
+  foreach item $log {
+    if {![regexp {^< } $item]} {continue}
+    regexp {^< ([^:]*):?(.*)} $item {} head tail
+    lappend test_result [list $head $tail]
   }
-
-  set tmpfile "$prefix$zoom.$xmin.$ymin.$suffix"
 
   if {[file exists $tmpfile] && [lindex [filetype $tmpfile] 0] == "binary"} {
     set tile_format ""
@@ -1696,7 +1775,6 @@ proc test_server_url {} {
   $wtest.text configure -state normal
   catch "$wtest.text delete 0.0 end"
   set wdt 0
-  set hgt 0
   foreach item $test_result {
     lassign $item head tail
     set head [string trim $head]
@@ -1706,13 +1784,13 @@ proc test_server_url {} {
     if {$tail != ""} {append str ": $tail"}
     set wdt [expr max($wdt,[string length $str])]
     $wtest.text insert end $str\n
-    incr hgt
   }
   $wtest.text delete end-1c
-# incr wdt -1
   if {$wdt > 100} {set wdt 100}
-  $wtest.text configure -state disabled \
-	-height $hgt -width $wdt
+  $wtest.text configure -state disabled -width $wdt
+  update idletasks
+  set hgt [$wtest.text count -displaylines 0.0 end]
+  $wtest.text configure -height $hgt
   if {[info exists tile_image]} {
     $wtest.size configure -text $tile_format
     $wtest.image configure -image $tile_image
@@ -1721,6 +1799,7 @@ proc test_server_url {} {
   } else {
     grid forget $wtest.image $wtest.size
   }
+  update idletasks
   wm transient $wtest .tmsserver
   wm deiconify $wtest
 }
@@ -1740,7 +1819,8 @@ proc save_global_settings {} {uplevel #0 {
   scan [wm geometry .] "%dx%d+%d+%d" width height x y
   set window.geometry "$x $y $width $height"
   set font.size [font configure TkDefaultFont -size]
-  set console.font.size [font configure console_font -size]
+  set console.geometry [send $ctid "set geometry"]
+  set console.font.size [send $ctid "font configure font -size"]
   foreach name {rendering.engine maps.contrast maps.gamma \
 	tcp.maxconn threads.min threads.max \
 	window.geometry font.size \
@@ -1792,16 +1872,17 @@ proc validate_number {widget event value sign number} {
   set name ::[$widget cget -textvariable]
   set value [string trim $value]
   set sign "\[$sign\]?";	# sign: " ", "+", "-", "+-"
-  set int   {\d+}
-  set float {(\d+\.?\d*|\d*\.?\d+)}
-  set number [set $number];	# number: "int", "float"
+  set int   {\d*}
+  set float {\d*\.?\d*}
+  set pattern [set $number];	# number: "int", "float"
   if {$event == "key"} {
-    return [regexp "^($sign|$sign$number)$" $value];
+    return [regexp "^($sign|$sign$pattern)$" $value];
   } elseif {$event == "focusin"} {
     set $name.prev $value
   } elseif {$event == "focusout"} {
     set prev [set $name.prev]
-    if {[regexp "^$sign$number$" $value]} {
+    if {[regexp "^$sign$pattern$" $value] &&
+       ![regexp "^($sign|$sign\\.)$" $value]} {
       if {![info exists ::$widget.minmax]} {return 1}
       lassign [set ::$widget.minmax] min max
       set test [regsub {([+-]?)0*([0-9]+.*)} $value {\1\2}]
@@ -1822,19 +1903,33 @@ proc incr_font_size {incr} {
   if {$size < 0} {set size [expr round(-$size/[tk scaling])]}
   incr size $incr
   if {$size < 5 || $size > 20} {return}
-  foreach item {TkDefaultFont TkTextFont TkFixedFont title_font} {
-    font configure $item -size $size
-  }
+  set fonts {TkDefaultFont TkTextFont TkFixedFont TkTooltipFont title_font}
+  foreach item $fonts {font configure $item -size $size}
+  update idletasks
+  # Repeating for correct widget geometry!
+  foreach item $fonts {font configure $item -size $size}
+  set height [expr [winfo reqheight .title]-2]
+
   foreach item {.xyrange_values .shading.algorithm_values \
-	.server.engine_values .server.interface_values} {
-    catch "$item current [$item current]"
-  }
-  set width [expr 6+$size]
-  foreach item {.effects.gamma_scale .effects.contrast_scale .zoom_scale} {
-    catch "$item configure -width $width"
+	.server.engine_values .server.interface_values} \
+	{catch "$item current [$item current]"}
+  foreach item {.effects.gamma_scale .effects.contrast_scale \
+	.zoom_scale .tmsserver.grid.z.scale} \
+	{catch "$item configure -width $height"}
+
+  if {$::tcl_version > 8.6} {
+    set scale [expr ($height+2)*0.0065]
+    foreach item {CheckOff CheckOn RadioOff RadioOn} \
+	{$item configure -format [list svg -scale $scale]}
+  } else {
+    set size [expr round(($height+3)*0.6)]
+    set padx [expr round($size*0.3)]
+    set pady [expr round($size*0.1)]
+    set margin [list 0 $pady $padx 0]
+    foreach item {TCheckbutton TRadiobutton} \
+	{style configure $item -indicatorsize $size -indicatormargin $margin}
   }
   update idletasks
-  .fill_r configure -width [filler_width_right]
 }
 
 # Check selection for completeness
@@ -1872,8 +1967,12 @@ proc selection_ok {} {
 
 proc process_start {command process} {
 
-  set rc [catch {open "| $command 2>@1" r} result]
+  lassign [chan pipe] fdi fdo
+  set rc [catch "exec $command >&@ $fdo &" result]
+  close $fdo
+
   if {$rc} {
+    close $fdi
     error_message "$result" return
     after 0 {set action 0}
     return
@@ -1884,27 +1983,26 @@ proc process_start {command process} {
   set ${process}::command $command
   set ${process}::cr ""
 
-  set fd $result
-  fconfigure $fd -blocking 0 -buffering line -encoding iso8859-1
+  set fd $fdi
+  fconfigure $fd -blocking 0 -buffering line
 
-  set pid [pid $fd]
+  set pid $result
   set exe [file tail [lindex $command 0]]
-
   set mark "\[[string toupper $process]\]"
-  puti "[mc m51 $pid $exe] $mark"
+  cputi "[mc m51 $pid $exe] $mark"
 
   set cr "\$${process}::cr"
+  unset -nocomplain ::$process.eof
   fileevent $fd readable "
-	while {\[gets $fd line\] >= 0} {
-	  if {\$cancel} {continue}
-	  puts \"$cr\\$mark \$line\"
-	}
-	if {\[eof $fd\]} {
-	  close $fd
-	  namespace delete $process
-	  puti \"\[mc m52 $pid $exe\] \\$mark\"
-	  set $process.eof 1
-	}"
+    while {\[gets $fd line\] >= 0} {
+      cputs \"$cr\\$mark \$line\"
+    }
+    if {\[eof $fd\]} {
+      cputi \"\[mc m52 $pid $exe\] \\$mark\"
+      namespace delete $process
+      set $process.eof 1
+      close $fd
+    }"
 
 }
 
@@ -1912,7 +2010,7 @@ proc process_start {command process} {
 
 proc process_kill {process} {
 
-  if {![namespace exists $process]} {return}
+  if {![process_running $process]} {return}
   namespace upvar $process fd fd pid pid
 
   fileevent $fd readable [regsub {m52} [fileevent $fd readable] {m53}]
@@ -1923,12 +2021,14 @@ proc process_kill {process} {
     catch {exec kill -SIGTERM $pid}
   }
 
+  if {![info exist ::$process.eof]} {vwait $process.eof}
+
 }
 
 # Check if process is running
 
-proc process_running {srv} {
-  return [namespace exists $srv]
+proc process_running {process} {
+  return [expr [namespace exists $process] && ![info exists ::$process.eof]]
 }
 
 # Mapsforge hillshading server start
@@ -1945,6 +2045,7 @@ proc srv_start {srv} {
 
   lappend command $::java_cmd -Xmx1G -Xms256M -Xmn256M
   if {[info exists ::java_args]} {lappend command {*}$::java_args}
+  lappend command -Dfile.encoding=UTF-8
 
   set engine ${::rendering.engine}
   if {$engine != "(default)"} {
@@ -2028,8 +2129,8 @@ proc srv_start {srv} {
 
   # Start server
 
-  puti "[mc m54 $name] ..."
-  puts "[get_shell_command $command]"
+  cputi "[mc m54 $name] ..."
+  cputs "[get_shell_command $command]"
 
   process_start $command $srv
 
@@ -2049,6 +2150,7 @@ proc srv_start {srv} {
   if {![process_running $srv]} {error_message [mc m55 $name] return; return}
   set ${srv}::port $port
   set ${srv}::cr "\r"
+  cputs "\r"
 
 }
 
@@ -2056,7 +2158,7 @@ proc srv_start {srv} {
 
 proc srv_stop {srv} {
 
-  if {![namespace exists $srv]} {return}
+  if {![process_running $srv]} {return}
 
   if {$::server_version < 1900} {
     process_kill $srv
@@ -2065,13 +2167,12 @@ proc srv_stop {srv} {
     set url "http://127.0.0.1:${port}/terminate"
     if {![catch {::http::geturl $url} token]} {
       if {[::http::status $token] == "eof"} {set code 200} \
-     else {set code [::http::ncode $token]}
-      if {$code != 200} {process_kill $srv}
+      else {set code [::http::ncode $token]}
+      if {$code != 200} {process_kill $srv; return}
       ::http::cleanup $token
     }
+    if {![info exist ::$srv.eof]} {vwait $srv.eof}
   }
-  if {![info exists ::$srv.eof]} {vwait $srv.eof}
-  unset ::$srv.eof
 
 }
 
@@ -2087,17 +2188,15 @@ proc pipe_run {exe args} {
   fconfigure $fd -blocking 0 -buffering line
   namespace eval pipe {}
   set pipe::pid [pid $fd]
-  set pipe::cmd $cmd
+  set pipe::exe $exe
   fileevent $fd readable "
     while {\[gets $fd line\] >= 0} {
-      if {\[info exists pipe::killed\]} {continue}
-      puts \"\\r> $exe \$line\"
-      if {\$cancel} {pipe_kill}
+      cputs \"\\r> $exe \$line\"
     }
     if {\[eof $fd\]} {
       set pipe::rc \[catch {close $fd} pipe::result]
     }"
-  vwait pipe::rc
+  if {![info exists pipe::rc]} {vwait pipe::rc}
   set return [list $pipe::rc $pipe::result]
   namespace delete pipe
   return $return
@@ -2106,15 +2205,16 @@ proc pipe_run {exe args} {
 # Kill command pipe
 
 proc pipe_kill {} {
-  set pid $pipe::pid
-  set cmd [file tail [lindex $pipe::cmd 0]]
+  if {![namespace exists pipe]} {return}
+  if {[info exists pipe::rc]} {return}
+  namespace upvar pipe pid pid exe exe
   if {$::tcl_platform(os) == "Windows NT"} {
     catch {exec TASKKILL /F /PID $pid}
   } elseif {$::tcl_platform(os) == "Linux"} {
     catch {exec kill -SIGTERM $pid}
   }
-  set pipe::killed 1
-  puts [mc m53 $pid $cmd]
+  if {![info exists pipe::rc]} {vwait pipe::rc}
+  cputi [mc m53 $pid $exe]
 }
 
 # Download tiles with "curl"
@@ -2138,14 +2238,15 @@ proc download_with_curl {} {uplevel 1 {
 
   set curl_exec $::curl
   lappend curl_exec -qsvkL --http1.1 --retry 0
+  lappend curl_exec --fail-early
   lappend curl_exec --parallel --parallel-max 4
   lappend curl_exec --output ${prefix}$zoom.#1.#2.$suffix
   lappend curl_exec --write-out $curl_format
   lappend curl_exec --stderr - --no-buffer
   lappend curl_exec $url
 
-  set valid 0
   set count 0
+  set valid 0
 
   set rc [catch {open "| $curl_exec" r} result]
   if {$rc} {
@@ -2157,32 +2258,35 @@ proc download_with_curl {} {uplevel 1 {
   }
 
   set fd $result
-  fconfigure $fd -blocking 0 -buffering line -translation binary
+  fconfigure $fd -blocking 0 -buffering line
   namespace eval pipe {}
   set pipe::pid [pid $fd]
-  set pipe::cmd $curl_exec
+  set pipe::exe [file tail $::curl]
+  lassign {-1 "unknown"} ::curl_rc ::curl_result
   fileevent $fd readable "
     while {\[gets $fd line\] >= 0} {
-      if {\[info exists pipe::killed\]} {continue}
+      if {\[info exists pipe::abort\]} {continue}
       if {\[string range \$line 0 1\] != {! }} {
 	puts $fdlog \[string trimright \$line \\r\]
       } else {
 	lmap {name value} \[string range \$line 2 end\] {set \$name \$value}
-	if {\$curl_rc == 0} {
-	  if {\$curl_echo} {puts \"\\r> GET \$curl_url -> HTTP status \$curl_status, \$curl_size bytes data\"}
+	if {!$::curl_echo} {continue}
+	if {\$curl_rc} {
+	  cputs \"\\r> curl error \$curl_rc: \$curl_result\"
+	  set pipe::abort 1
 	} else {
-	  if {\$curl_echo} {puts \"\\r> curl error \$curl_rc: \$curl_result\"}
-	  if {\${tiles.abort}} {set cancel 1}
+	  cputs \"\\r> GET \$curl_url -> HTTP status \$curl_status, \$curl_size bytes data\"
+	  if {\$curl_status == 200 || \$curl_status == 404} {continue}
+	  if {${::tiles.abort}} {set pipe::abort 1; after 0 pipe_kill}
 	}
       }
-      if {\$cancel} {pipe_kill}
     }
     if {\[eof $fd\]} {
-      close $fd
-      set pipe::rc \$curl_rc
       set pipe::result \$curl_result
+      set pipe::rc \$curl_rc
+      close $fd
     }"
-  vwait pipe::rc
+  if {![info exists pipe::rc]} {vwait pipe::rc}
   lassign [list $pipe::rc $pipe::result] rc result
   namespace delete pipe
 
@@ -2205,108 +2309,6 @@ proc download_with_curl {} {uplevel 1 {
 
 }}
 
-# Download tiles with "http"
-
-proc http_geturl_handler {file socket token} {
-
-  upvar #0 $token state
-  set size 0
-  if {[string first "image/" [set state(type)]] == 0} {
-    set fd [open $file w+]
-    fconfigure $fd -translation binary -buffering none
-    while {![eof $socket]} {incr size [chan copy $socket $fd]}
-    close $fd
-  } else {
-    while {![eof $socket]} {incr size [string length [read -nonewline $socket]]}
-  }
-  return $size
-
-}
-
-proc download_with_http {} {uplevel 1 {
-
-  set count 0
-  set valid 0
-  set reloc 0
-  set error 0
-  set ytile $ymin
-  while {$ytile <= $ymax} {
-    if {$error && ${::tiles.abort}} {break}
-    set xtile $xmin
-    while {$xtile <= $xmax} {
-      if {$error && ${::tiles.abort}} {break}
-      set url [string trim $url_pattern]
-      regsub "\\$?{x}" $url $xtile url
-      regsub "\\$?{y}" $url $ytile url
-      regsub "\\$?{z}" $url $zoom url
-      set file $prefix$zoom.$xtile.$ytile.$suffix
-
-      # Relocation loop
-      while {1} {
-	if {$::cancel} {return 1}
-	if {$srv == "srv"} {puts "\r> GET $url"}
-	set rc [catch "::http::geturl $url -keepalive 1 \
-	  -binary 1 -handler {http_geturl_handler $file}" result]
-	if {$rc} {
-	  error_message "Download $url:\n$result" return
-	  puts $fdlog [format $logfmt "URL" $url]
-	  puts $fdlog [format $logfmt "HTTP error" $result]
-	  puts $fdlog $logsep
-	  return 1
-	}
-	set token $result
-
-	puts $fdlog [format $logfmt "URL" $url]
-	puts $fdlog [format $logfmt "HTTP transaction" [::http::status $token]]
-	puts $fdlog [format $logfmt "HTTP error" [::http::error $token]]
-	puts $fdlog [format $logfmt "HTTP status" [::http::code $token]]
-	array set meta [set ${token}(meta)]
-	foreach item [lsort [array names meta]] {
-	  puts $fdlog [format $logfmt $item $meta($item)]
-	}
-	unset meta
-	puts $fdlog $logsep
-
-	set code [::http::ncode $token]
-	if {![string match {30[12378]} $code]} {break}
-	incr reloc
-
-	# Replace URL by relocation URL
-	lmap {name value} [set ${token}(meta)] {
-	  if {![regexp -nocase $name "^location$"]} {continue}
-	  set url_new $value
-	  break
-	}
-	if {![info exists url_new]} {break}
-	::http::cleanup $token
-	array set uri_old [::uri::split $url]
-	array set uri_new [::uri::split $url_new]
-	if {$uri_new(host) == ""} {
-	  set uri_new(scheme) $uri_old(scheme)
-	  set uri_new(host) $uri_old(host)
-	  set uri_new(port) $uri_old(port)
-	}
-	set url [eval ::uri::join [array get uri_new]]
-	unset url_new uri_new uri_old
-      }
-
-      incr count
-      set size [::http::size $token]
-      ::http::cleanup $token
-      unset token
-      if {($code == 200 || $code == 404) && $size > 0} {
-	incr valid
-      } else {
-	incr error
-      }
-      incr xtile
-    }
-    incr ytile
-  }
-  return 0
-
-}}
-
 # Run render job
 
 proc run_render_job {} {
@@ -2321,12 +2323,12 @@ proc run_render_job {} {
   set text "\n[mc m61] ...\n"
   append text "[mc l24]: $zoom\n"
   append text "[mc m63]:\n"
-  append text "$xmin \u2264 xtile \u2264 $xmax\n"
-  append text "$ymin \u2264 ytile \u2264 $ymax\n"
+  append text "$xmin ≤ xtile ≤ $xmax\n"
+  append text "$ymin ≤ ytile ≤ $ymax\n"
   append text "[mc m64]:\n"
-  append text "${::coord.xmin}° \u2264 [mc m65] \u2264 ${::coord.xmax}°\n"
-  append text "${::coord.ymin}° \u2264 [mc m66] \u2264 ${::coord.ymax}°"
-  puts "$text"
+  append text "${::coord.xmin}° ≤ [mc m65] ≤ ${::coord.xmax}°\n"
+  append text "${::coord.ymin}° ≤ [mc m66] ≤ ${::coord.ymax}°"
+  cputs "$text"
 
   set xcount [expr $xmax-$xmin+1]
   set ycount [expr $ymax-$ymin+1]
@@ -2335,8 +2337,8 @@ proc run_render_job {} {
   set text ""
   append text "[mc m67 $xcount "x"],\n"
   append text "[mc m67 $ycount "y"],\n"
-  append text "\u2192 [mc m68] = $xcount * $ycount = $total.\n"
-  puts "$text"
+  append text "→ [mc m68] = $xcount * $ycount = $total.\n"
+  cputs "$text"
 
   # Confirm if more than threshold tiles
 
@@ -2350,7 +2352,7 @@ proc run_render_job {} {
 
   catch {cd ${::tiles.folder}}
   set folder [pwd]
-  puts "[mc m71 $folder]\n"
+  cputs "[mc m71 $folder]\n"
   update
 
   set prefix ${::tiles.prefix}
@@ -2398,7 +2400,7 @@ proc run_render_job {} {
       if {$::tile_size != 256} \
 	{append url_pattern "?tileRenderSize=${::tile_size}"}
     }
-    puts "[mc m70 $url_pattern] ...\n"
+    cputs "[mc m70 $url_pattern] ...\n"
 
     puts $fdlog $logsep
     puts $fdlog "Download tiles from URL '$url_pattern' ..."
@@ -2414,15 +2416,11 @@ proc run_render_job {} {
       }
     }
 
-    # Download with "curl" or "http"
+    # Download with "curl"
 
     set start [clock milliseconds]
-    if {${::use.curl}} {
-      set ::curl_echo [expr {$srv == "srv"}]
-      set rc [download_with_curl]
-    } else {
-      set rc [download_with_http]
-    }
+    set ::curl_echo [expr {$srv == "srv"}]
+    set rc [download_with_curl]
     set stop [clock milliseconds]
 
     # Stop server
@@ -2433,15 +2431,14 @@ proc run_render_job {} {
 
     # Report result
 
-    puts "\n[mc m72 $total $valid]"
+    cputs "\n[mc m72 $total $valid]"
 
     # Measure time(s)
 
     set time [expr $stop-$start]
-    puts ""
-    puts "[mc m75 $time $valid]"
-    if {$valid} {puts "[mc m76 [format "%.1f" [expr $time/(1.*$valid)]]]"}
-    puts "... [mc m77]\n"
+    cputs "\n[mc m75 $time $valid]"
+    if {$valid} {cputs "[mc m76 [format "%.1f" [expr $time/(1.*$valid)]]]"}
+    cputs "... [mc m77]\n"
 
     if {$valid == 0} {set rc 1}
     if {$rc} {break}
@@ -2457,12 +2454,12 @@ proc run_render_job {} {
   }
 
   if {$::cancel} {
-    puts "\n[mc m73a]"
+    cputs "\n[mc m73a]"
     file delete -force $logfile
     cd $::cwd
     return
   } elseif {$rc || $valid != $total} {
-    puts "[mc m73b $folder/$logfile]"
+    cputs "[mc m73b $folder/$logfile]"
     cd $::cwd
     return
   } else {
@@ -2508,7 +2505,7 @@ proc run_render_job {} {
     set level ""
   }
 
-  puts "$text ...\n"
+  cputs "$text ...\n"
   set start [clock milliseconds]
 
   set fd [file tempfile]
@@ -2556,7 +2553,7 @@ proc run_render_job {} {
 
   if {[llength $data]} {
     if {$rc || [file exists $tile.png]} {
-      puts "> [join $data "\n> "]\n"
+      cputs "> [join $data "\n> "]\n"
     } else {
       set rc 1
       set result "\n [join $data "\n "]\n"
@@ -2571,18 +2568,18 @@ proc run_render_job {} {
   if {$::cancel} {
     break
   } elseif {$rc} {
-    puts "[mc m74 $exe $result]"
+    cputs "[mc m74 $exe $result]"
     break
   } else {
     set time [expr $stop-$start]
-    puts "[mc m85 $time]"
+    cputs "[mc m85 $time]"
   }
 
   # Compose map tiles and alpha transparent hillshading overlay tiles
 
   if {$ovlmap} {
 
-  puts "\n[mc m84c] ...\n"
+  cputs "\n[mc m84c] ...\n"
   set start [clock milliseconds]
 
   set fd [file tempfile batch_file]
@@ -2628,7 +2625,7 @@ proc run_render_job {} {
 
   if {[llength $data]} {
     if {$rc || ([file exists $tile.png] && [file mtime $tile.png] >= $mtime)} {
-      puts "> [join $data "\n> "]\n"
+      cputs "> [join $data "\n> "]\n"
     } else {
       set rc 1
       set result "\n [join $data "\n "]\n"
@@ -2642,11 +2639,11 @@ proc run_render_job {} {
   if {$::cancel} {
     break
   } elseif {$rc} {
-    puts "[mc m74 $exe $result]"
+    cputs "[mc m74 $exe $result]"
     break
   } else {
     set time [expr $stop-$start]
-    puts "[mc m85 $time]"
+    cputs "[mc m85 $time]"
   }
 
   }
@@ -2655,7 +2652,7 @@ proc run_render_job {} {
 
   # Compose tiles to image
 
-  puts "\n[mc m78 $composed.png] ..."
+  cputs "\n[mc m78 $composed.png] ..."
 
   set start [clock milliseconds]
 
@@ -2680,7 +2677,7 @@ proc run_render_job {} {
   close $fd
 
   set args "montage -mode concatenate -tile ${xcount}x${ycount} @$batch_file $composed.png"
-  puts "> [file tail $exe] $args"
+  cputs "> [file tail $exe] $args"
   set fderr [file tempfile]
   lassign [pipe_run $exe {*}$args 2>@ $fderr] rc result
   seek $fderr 0
@@ -2691,7 +2688,7 @@ proc run_render_job {} {
 
   if {[llength $data]} {
     if {$rc || [file exists $composed.png]} {
-      puts "> [join $data "\n> "]\n"
+      cputs "> [join $data "\n> "]\n"
     } else {
       set rc 1
       set result "\n [join $data "\n "]\n"
@@ -2705,19 +2702,19 @@ proc run_render_job {} {
   if {$::cancel} {
     break
   } elseif {$rc} {
-    puts "[mc m74 $exe $result]"
+    cputs "[mc m74 $exe $result]"
     break
   } else {
     set time [expr $stop-$start]
-    puts "[mc m85 $time]"
-    puts "[mc m81 $composed.png]"
+    cputs "[mc m85 $time]"
+    cputs "[mc m81 $composed.png]"
   }
 
   # Delete tiles
 
   if {!${::tiles.keep}} {
     file delete -force {*}$tiles
-    puts "\n[mc m83]"
+    cputs "\n[mc m83]"
   }
 
   break
@@ -2745,6 +2742,12 @@ proc run_render_job {} {
 
 }
 
+proc cancel_render_job {} {
+  set ::cancel 1
+  process_kill ovl
+  pipe_kill
+}
+
 # Show main window (at saved position)
 
 wm positionfrom . program
@@ -2755,6 +2758,7 @@ if {[info exists window.geometry]} {
   set x [expr min($x,[winfo vrootx .]+[winfo vrootwidth .]-$width)]
   wm geometry . +$x+$y
 }
+incr_font_size 0
 wm deiconify .
 
 # Wait for valid selection or finish
@@ -2803,11 +2807,13 @@ foreach item {global tmsserver shading tiles} {save_${item}_settings}
 
 # Wait until output console window was closed
 
-if {[winfo ismapped .console]} {
-  puti "[mc m99]"
-  wm protocol .console WM_DELETE_WINDOW ""
-  bind .console <ButtonRelease-3> "destroy .console"
-  tkwait window .console
+if {[send $ctid "winfo ismapped ."]} {
+  send $ctid "
+    write \"\n[mc m99]\"
+    wm protocol . WM_DELETE_WINDOW {}
+    bind . <ButtonRelease-3> {destroy .}
+    tkwait window .
+  "
 }
 
 # Done
