@@ -27,7 +27,7 @@ set cwd [pwd]
 
 # Required packages
 
-foreach item {Thread msgcat tooltip http uri fileutil} {
+foreach item {Thread msgcat tooltip http md5 uri fileutil} {
   if {[catch "package require $item"]} {
     ::tk::MessageBox -title $title -icon error \
 	-message "Could not load required Tcl package '$item'" \
@@ -49,6 +49,7 @@ interp alias {} ::checkbutton {} ::ttk::checkbutton
 interp alias {} ::combobox {} ::ttk::combobox
 interp alias {} ::radiobutton {} ::ttk::radiobutton
 interp alias {} ::scrollbar {} ::ttk::scrollbar
+interp alias {} ::md5 {} ::md5::md5
 
 # Define color palette
 
@@ -92,8 +93,8 @@ Entry.insertBackground WindowText
 Entry.highlightColor WindowFrame
 Listbox.background Window
 Listbox.highlightColor WindowFrame
-Tooltip.Label.background InfoBackground
-Tooltip.Label.foreground InfoText
+Tooltip*Label.background InfoBackground
+Tooltip*Label.foreground InfoText
 } {option add *$item [set color::$value]}
 
 set dialog.wrapLength [expr [winfo screenwidth .]/2]
@@ -110,8 +111,8 @@ Labelframe.borderWidth 0
 Scale.highlightThickness 1
 Scale.showValue 0
 Scale.takeFocus 1
-Tooltip.Label.padX 2
-Tooltip.Label.padY 2
+Tooltip*Label.padX 2
+Tooltip*Label.padY 2
 } {eval option add *$item $value}
 
 # Global ttk widget options
@@ -321,9 +322,10 @@ set dem.folder ""
 
 set tcp.port $tcp_port
 set tcp.interface $interface
-set tcp.maxconn 256
+set tcp.maxconn 1024
 set threads.min 0
 set threads.max 8
+set log.requests 1
 
 set use.magick "gm"
 set tiles.folder $cwd
@@ -537,7 +539,7 @@ foreach item {server_jar} {
 # therefore not working within Tcl script called by "wish"!
 # -> Try getting Java's real path from Windows registry
 
-if {$tcl_platform(os) == "Windows NT" && 
+if {$tcl_platform(os) == "Windows NT" &&
   ([regexp -nocase {^.*/Program Files.*/Common Files/Oracle/Java/.*/java.exe$} $java_cmd]
    || [regexp -nocase {^.*/ProgramData/Oracle/Java/.*/java.exe$} $java_cmd])} {
   set exec ""
@@ -562,7 +564,7 @@ set java_string "unknown"
 set command [list $java_cmd -version]
 set rc [catch "exec $command 2>@1" result]
 if {!$rc} {
-  set line [lindex [split $result "\n"] 0]
+  set line [lindex [split $result \n] 0]
   regsub -nocase {^.* version "(.*)".*$} $line {\1} data
   set java_string $data
   if {[regsub {^1\.([1-9]+)\.[0-9]+.*$} $java_string {\1} data] > 0} {
@@ -577,25 +579,27 @@ if {$rc || $java_version == 0} \
   {error_message [mc e08 Java [get_shell_command $command] $result] exit}
 
 # Evaluate numeric tile server version
-# from output line containing version string " version: x.y.z"
+# from output line ending with version string " version: x.y.z[.c]"
 
 set server_version 0
 set server_string "unknown"
-set command [list $java_cmd -jar $server_jar -h]
+set command [list $java_cmd -jar $server_jar -help]
 set rc [catch "exec $command 2>@1" result]
-foreach line [split $result "\n"] {
-  if {![regsub -nocase {^.* version: ((?:[0-9]+\.){2}(?:[0-9]+){1}).*$} $line \
-	{\1} data]} {continue}
+foreach line [split $result \n] {
+  if {![regexp -nocase {^(?:.* version: )([0-9.]+)$} $line "" data]} {continue}
   set server_string $data
-  foreach item [split $data .] \
-	{set server_version [expr 100*$server_version+$item]}
+  set data [split $data .]
+  if {[llength $data] == 3} {set server_type 0}
+  if {[llength $data] == 4} {set server_type 1}
+  while {[llength $data] < 4} {lappend data 0}
+  foreach item $data {set server_version [expr 100*$server_version+$item]}
   break
 }
 
 if {$rc || $server_version == 0} \
   {error_message [mc e08 Server [get_shell_command $command] $result] exit}
 
-if {$server_version < 1704 } \
+if {$server_version < 170400} \
   {error_message [mc e07 "Mapsforge tile server" $server_string 0.17.4] exit}
 
 # Looking for installed URL tool "curl"
@@ -715,11 +719,11 @@ pack .title -expand 1 -fill x -pady {0 3}
 set github "https://github.com/JFritzle/TMS-to-Tiles"
 tooltip .title "$github"
 if {$tcl_platform(platform) == "windows"} {
-  set script "exec cmd.exe /C START {} $github"
+  set exec "exec cmd.exe /C START {} $github"
 } elseif {$tcl_platform(os) == "Linux"} {
-  set script "exec nohup xdg-open $github >/dev/null"
+  set exec "exec nohup xdg-open $github >/dev/null"
 }
-bind .title <ButtonRelease-1> "catch {$script}"
+bind .title <ButtonRelease-1> "catch {$exec}"
 
 # Left menu column
 
@@ -1476,7 +1480,7 @@ pack .server.port_value -in .server.port \
 labelframe .server.maxconn -labelanchor w -text [mc x16]:
 entry .server.maxconn_value -textvariable tcp.maxconn \
 	-width 6 -justify center
-set .server.maxconn_value.minmax {0 {} 256}
+set .server.maxconn_value.minmax {0 {} 1024}
 tooltip .server.maxconn_value "[mc x16] ≥ 0"
 pack .server.maxconn -expand 1 -fill x -pady 1
 pack .server.maxconn_value -in .server.maxconn \
@@ -1488,10 +1492,12 @@ labelframe .server.threadsmin -labelanchor w -text [mc x17]:
 entry .server.threadsmin_value -textvariable threads.min \
 	-width 6 -justify center
 set .server.threadsmin_value.minmax {0 {} 0}
+if {$server_type == 0} {
 tooltip .server.threadsmin_value "[mc x17] ≥ 0"
 pack .server.threadsmin -expand 1 -fill x -pady {6 1}
 pack .server.threadsmin_value -in .server.threadsmin \
 	-side right -anchor e -expand 1 -padx {3 0}
+}
 
 # Maximum number of concurrent threads
 
@@ -1499,10 +1505,19 @@ labelframe .server.threadsmax -labelanchor w -text [mc x18]:
 entry .server.threadsmax_value -textvariable threads.max \
 	-width 6 -justify center
 set .server.threadsmax_value.minmax {4 {} 8}
+if {$server_type == 0} {
 tooltip .server.threadsmax_value "[mc x18] ≥ 4"
 pack .server.threadsmax -expand 1 -fill x -pady 1
 pack .server.threadsmax_value -in .server.threadsmax \
 	-side right -anchor e -expand 1 -padx {3 0}
+}
+
+# Enable/disable server request logging
+
+checkbutton .server.logrequests -text [mc x19] -variable log.requests
+if {$server_type == 1} {
+pack .server.logrequests -expand 1 -fill x
+}
 
 # Reset server configuration
 
@@ -1762,7 +1777,7 @@ proc test_server_url {} {
   set rc [download_with_curl]
 
   seek $fdlog 0
-  set log [split [read -nonewline $fdlog] "\n"]
+  set log [split [read -nonewline $fdlog] \n]
   close $fdlog
 
   set test_result {}
@@ -1850,7 +1865,7 @@ proc save_global_settings {} {uplevel #0 {
   set console.geometry [send $ctid "set geometry"]
   set console.font.size [send $ctid "font configure font -size"]
   foreach name {rendering.engine maps.contrast maps.gamma \
-	tcp.maxconn threads.min threads.max \
+	tcp.maxconn threads.min threads.max log.requests \
 	window.geometry font.size \
 	console.show console.geometry console.font.size} {
     set ini_settings($name) [set $name]
@@ -2068,7 +2083,6 @@ proc srv_start {srv} {
 
   set port [set ::tcp.port]
   set name "Mapsforge Hillshading"
-  append name " Server \[[string toupper $srv]\]"
 
   lappend command $::java_cmd -Xmx1G -Xms256M -Xmn256M
   if {[info exists ::java_args]} {lappend command {*}$::java_args}
@@ -2090,9 +2104,15 @@ proc srv_start {srv} {
 # set now [clock format [clock seconds] -format "%Y-%m-%d_%H-%M-%S"]
 # lappend command -Xloggc:$::cwd/gc.$now.log -XX:+PrintGCDetails
 # lappend command -Dlog4j.debug
-# lappend command -Dlog4j.configuration=file:<folder>/log4j.properties
+  lappend command -Dlog4j.configuration=file:$::tmpdir/log4j.properties
 
   lappend command -Dsun.java2d.opengl=true
+# lappend command -Dsun.java2d.d3d=true
+# lappend command -Dsun.java2d.accthreshold=0
+# lappend command -Dsun.java2d.translaccel=true
+# lappend command -Dsun.java2d.ddforcevram=true
+# lappend command -Dsun.java2d.ddscale=true
+# lappend command -Dsun.java2d.ddblit=true
 # lappend command -Dsun.java2d.renderer.log=true
   lappend command -Dsun.java2d.renderer.log=false
   lappend command -Dsun.java2d.renderer.useLogger=true
@@ -2109,11 +2129,41 @@ proc srv_start {srv} {
   lappend command -Dsun.java2d.renderer.subPixel_log2_Y=2
   lappend command -Dsun.java2d.renderer.useFastMath=true
   lappend command -Dsun.java2d.render.bufferSize=524288
+# lappend command -Dawt.useSystemAAFontSettings=on
 
   lappend command -jar $::server_jar
-  lappend command -if ${::tcp.interface} -p ${port}
 
-  lappend command -m ""
+  if {$::server_type == 1} {
+    set config $::tmpdir/config
+    file mkdir $config/tasks
+
+    lappend command -config [file nativename $config]
+
+    set file server.properties
+    set data "terminate=true\n"
+    append data "requestlog-format="
+    if {${::log.requests}} {append data "From %{client}a Get %U%q Status %s Size %O bytes Time %{ms}T ms"}
+    append data "\n"
+    if {${::tcp.interface} == "localhost"} {append data "host=localhost\n"}
+    append data "port=$port\n"
+    append data "acceptQueueSize=${::tcp.maxconn}\n"
+    set md5 [md5 -hex [encoding convertto utf-8 $data]]
+
+    if {![info exists ::tms_md5_$file] || $md5 != [set ::tms_md5_$file]} {
+      set ::tms_md5_$file $md5
+      set fd [open $config/$file w]
+      puts -nonewline $fd $data
+      close $fd
+    }
+
+  }
+
+  set params {}
+  if {$::server_type == 0} {
+    lappend params interface ${::tcp.interface}
+    lappend params port $port
+    lappend params mapfiles ""
+  }
 
   set algorithm ${::shading.algorithm}
   if {$algorithm == "simple"} {
@@ -2121,25 +2171,42 @@ proc srv_start {srv} {
     set scale ${::shading.simple.scale}
     if {$linearity == ""} {set linearity 0.1}
     if {$scale == ""} {set scale 0.666}
-    lappend command -hs "$algorithm\($linearity,$scale\)"
+    lappend params hillshading-algorithm "$algorithm\($linearity,$scale\)"
   } else {
     set angle ${::shading.diffuselight.angle}
     if {$angle == ""} {set angle 50.}
-    lappend command -hs "$algorithm\($angle\)"
+    lappend params hillshading-algorithm "$algorithm\($angle\)"
   }
   set magnitude ${::shading.magnitude}
   if {$magnitude == ""} {set magnitude 1.}
-  lappend command -hm "$magnitude"
-  lappend command -d ${::dem.folder}
+  lappend params hillshading-magnitude "$magnitude"
+  lappend params demfolder ${::dem.folder}
 
-  lappend command -mxq ${::tcp.maxconn}
-  lappend command -mxt ${::threads.max}
-  lappend command -mit ${::threads.min}
+  if {$::server_type == 0} {
+    lappend params max-queuesize ${::tcp.maxconn}
+    lappend params max-thread ${::threads.max}
+    lappend params min-thread ${::threads.min}
+    if {$::server_version >= 190000} {lappend params terminate true}
+  }
 
-  if {$::server_version >= 1900} {lappend command -term}
+  if {$::server_type == 0} {
 
-  # Server's TCP port is currently in use?
+    foreach {item value} $params {lappend command -$item $value}
 
+  } elseif {$::server_type == 1} {
+
+    set data ""
+    foreach {item value} $params {append data "$item=$value\n"}
+
+    set task [lindex [split $name] 1]
+    set fd [open $config/tasks/$task.properties w]
+    puts -nonewline $fd $data
+    close $fd
+
+  }
+
+  append name " Server \[[string toupper $srv]\]"
+  # Server not yet running: TCP port is currently in use?
   set count 0
   while {$count < 5} {
     set rc [catch {socket -server {} -myaddr 127.0.0.1 $port} fd]
@@ -2165,6 +2232,7 @@ proc srv_start {srv} {
   # Send dummy render request and wait for rendering initialization
 
   set url "http://127.0.0.1:${port}/0/0/0.png"
+  if {$::server_type == 1} {append url "?task=$task"}
   while {[process_running $srv]} {
     if {[catch {::http::geturl $url} token]} {after 10; continue}
     set size [::http::size $token]
@@ -2177,7 +2245,7 @@ proc srv_start {srv} {
   if {![process_running $srv]} {error_message [mc m55 $name] return; return}
   set ${srv}::port $port
   set ${srv}::cr "\r"
-  cputs "\r"
+  if {${::log.requests}} {cputs "\r"}
 
 }
 
@@ -2187,7 +2255,7 @@ proc srv_stop {srv} {
 
   if {![process_running $srv]} {return}
 
-  if {$::server_version < 1900} {
+  if {$::server_version < 190000} {
     process_kill $srv
   } else {
     namespace upvar $srv port port
@@ -2275,6 +2343,7 @@ proc download_with_curl {} {uplevel 1 {
   set count 0
   set valid 0
 
+# cputs "\r[get_shell_command $curl_exec]\n"
   set rc [catch {open "| $curl_exec" r} result]
   if {$rc} {
     error_message "Download $url:\n$result" return
@@ -2423,9 +2492,13 @@ proc run_render_job {} {
 
     if {$srv == "srv"} {set url_pattern ${::tms.url}}
     if {$srv == "ovl"} {
+      set sfx {}
       set url_pattern "http://127.0.0.1:${::tcp.port}/{z}/{x}/{y}.png"
-      if {$::tile_size != 256} \
-	{append url_pattern "?tileRenderSize=${::tile_size}"}
+      if {$::server_type == 1} {lappend sfx "task=Hillshading"}
+      if {$::tile_size != 256} {lappend sfx "tileRenderSize=$::tile_size"}
+      set sfx [join $sfx "&"]
+      if {$sfx != ""} {set sfx "?$sfx"}
+      append url_pattern $sfx
     }
     cputs "[mc m70 $url_pattern] ...\n"
 
@@ -2452,7 +2525,10 @@ proc run_render_job {} {
 
     # Stop server
 
-    if {$srv == "ovl"} {srv_stop $srv}
+    if {$srv == "ovl"} {
+      cputs ""
+      srv_stop $srv
+    }
 
     if {$::cancel} {break}
 
@@ -2760,11 +2836,11 @@ proc run_render_job {} {
   set file $folder/$composed.png
   if {![file exists $file]} {return}
   if {$::tcl_platform(platform) == "windows"} {
-    set script "exec cmd.exe /C START {} \"$file\""
+    set exec "exec cmd.exe /C START {} \"$file\""
   } elseif {$::tcl_platform(os) == "Linux"} {
-    set script "exec nohup xdg-open \"$file\" >/dev/null"
+    set exec "exec nohup xdg-open \"$file\" >/dev/null"
   }
-  after 0 "catch {$script}"
+  after 0 "catch {$exec}"
   return
 
 }
@@ -2800,6 +2876,22 @@ while {1} {
   if {[selection_ok]} {break}
 }
 
+# Create server's temporary files folder
+
+append tmpdir /[format "TCL%8.8x" [pid]]
+file mkdir $tmpdir
+
+# Create server logging properties
+
+set fd [open $tmpdir/log4j.properties w]
+puts $fd "log4j.rootLogger=INFO, stdout"
+puts $fd "log4j.appender.stdout.encoding=UTF-8"
+puts $fd "log4j.appender.stdout=org.apache.log4j.ConsoleAppender"
+puts $fd "log4j.appender.stdout.Target=System.out"
+puts $fd "log4j.appender.stdout.layout=org.apache.log4j.PatternLayout"
+puts $fd "log4j.appender.stdout.layout.ConversionPattern=%d{yyyy-MM-dd HH:mm:ss.SSS} %m%n"
+close $fd
+
 # Run render job
 
 busy_state 1
@@ -2824,6 +2916,10 @@ while {$action == 1} {
 }
 unset action
 
+# Delete temporary files folder
+
+catch "file delete -force $tmpdir"
+
 # Unmap main toplevel window
 
 wm withdraw .
@@ -2846,4 +2942,11 @@ if {[send $ctid "winfo ismapped ."]} {
 # Done
 
 destroy .
+
+# Let Windows OS remove remaining temporary folder after some delay
+if {$tcl_platform(os) == "Windows NT" && [file isdirectory $tmpdir]} {
+  regsub -all {/} $tmpdir {\\\\} tmp
+  exec cmd.exe /C "TIMEOUT /T 1 /NOBREAK > NUL & RMDIR /S /Q $tmp" &
+}
+
 exit
