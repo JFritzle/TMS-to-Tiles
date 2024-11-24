@@ -1,3 +1,9 @@
+2024-11-24
+
+- Fixed root of temporary directory not set
+- Prepared for upcoming Mapsforge server version 0.22.0:
+  Additional asymmetric hillshading algorithms
+
 2024-10-27
 
 - Fixed tooltip background color
