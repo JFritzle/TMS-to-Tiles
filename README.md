@@ -21,6 +21,8 @@ Downloaded tiles may optionally be composed to an image.
 Screenshot of graphical user interface: 
 ![GUI](https://github.com/JFritzle/TMS-to-Tiles/assets/62614244/f7c4f587-34c5-4c5c-9b9b-927a98eab215)
 
+Please note:  
+Old tile server type has reached end of life and version 0.21.4 is last version released. Further development only takes place on new "tasks" server type. After some grace period, graphical user interface support for the old server type will be dropped. Therefore, an early switch to the new server type is recommended.   
 
 ### Installation
 
