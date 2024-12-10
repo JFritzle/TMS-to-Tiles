@@ -52,7 +52,6 @@ interp alias {} ::scrollbar {} ::ttk::scrollbar
 
 # Define color palette
 
-namespace eval color {}
 foreach {item value} {
 Background #f0f0f0
 ButtonHighlight #ffffff
@@ -68,7 +67,7 @@ Trough #c8c8c8
 Window #ffffff
 WindowFrame #646464
 WindowText #000000
-} {set color::$item $value}
+} {set color$item $value}
 
 # Global widget options
 
@@ -94,7 +93,7 @@ Listbox.background Window
 Listbox.highlightColor WindowFrame
 Tooltip*Label.background InfoBackground
 Tooltip*Label.foreground InfoText
-} {option add *$item [set color::$value]}
+} {option add *$item [set color$value]}
 
 set dialog.wrapLength [expr [winfo screenwidth .]/2]
 foreach {item value} {
@@ -160,14 +159,14 @@ if {$tcl_platform(os) == "Windows NT"} \
 if {$tcl_platform(os) == "Linux"} \
 	{lassign {0 2} yb yc}
 foreach {item option value} {
-. background $color::Background
-. bordercolor $color::Border
-. focuscolor $color::Focus
-. darkcolor $color::WindowFrame
-. lightcolor $color::Window
-. troughcolor $color::Trough
-. selectbackground $color::Window
-. selectforeground $color::WindowText
+. background $colorBackground
+. bordercolor $colorBorder
+. focuscolor $colorFocus
+. darkcolor $colorWindowFrame
+. lightcolor $colorWindow
+. troughcolor $colorTrough
+. selectbackground $colorWindow
+. selectforeground $colorWindowText
 TButton borderwidth 2
 TButton padding "{0 -2 0 $yb}"
 TCombobox arrowsize 15
@@ -177,16 +176,16 @@ TRadiobutton padding "{0 $yc}"
 } {eval style configure $item -$option [eval set . \"$value\"]}
 
 foreach {item option value} {
-TButton darkcolor {pressed $color::Window}
-TButton lightcolor {pressed $color::WindowFrame}
-TButton background {focus $color::Focus pressed $color::Focus}
-TCombobox background {focus $color::Focus pressed $color::Focus}
-TCombobox bordercolor {focus $color::WindowFrame}
-TCombobox selectbackground {focus $color::Highlight}
-TCombobox selectforeground {focus $color::HighlightText}
-TCheckbutton background {focus $color::Focus}
-TRadiobutton background {focus $color::Focus}
-Arrow.TButton bordercolor {focus $color::WindowFrame}
+TButton darkcolor {pressed $colorWindow}
+TButton lightcolor {pressed $colorWindowFrame}
+TButton background {focus $colorFocus pressed $colorFocus}
+TCombobox background {focus $colorFocus pressed $colorFocus}
+TCombobox bordercolor {focus $colorWindowFrame}
+TCombobox selectbackground {focus $colorHighlight}
+TCombobox selectforeground {focus $colorHighlightText}
+TCheckbutton background {focus $colorFocus}
+TRadiobutton background {focus $colorFocus}
+Arrow.TButton bordercolor {focus $colorWindowFrame}
 } {style map $item -$option [eval list {*}$value]}
 
 # Global button bindings
@@ -402,7 +401,7 @@ set title [mc l01]
 wm title . $title
 wm protocol . WM_DELETE_WINDOW "set action 0"
 wm resizable . 0 0
-. configure -bd 5 -bg $color::Background
+. configure -bd 5 -bg $colorBackground
 
 # Output console window
 
@@ -415,7 +414,7 @@ set ctid [thread::create -joinable "
   set font_size ${console.font.size}
   set geometry {${console.geometry}}
   ttk::style theme use clam
-  ttk::style configure . -border $color::Border -troughcolor $color::Trough
+  ttk::style configure . -border $colorBorder -troughcolor $colorTrough
   thread::wait
   "]
 
@@ -1313,7 +1312,7 @@ tooltip .shading.asy.value0 "0 ≤ [mc l880] ≤ 1"
 set .shading.asy.value1.minmax {0 99 0}
 tooltip .shading.asy.value1 "0 ≤ [mc l881] < [mc l882] %"
 set .shading.asy.value2.minmax {1 100 80}
-tooltip .shading.asy.value2 "0 < [mc l882] ≤ 100 %"
+tooltip .shading.asy.value2 "[mc l881] < [mc l882] ≤ 100 %"
 checkbutton .shading.asy.hq -text [mc l885] -variable shading.asy.array(5) \
 	-onvalue true -offvalue false
 grid .shading.asy.hq -row 4 -column 1 -columnspan 2 -sticky we
@@ -1602,8 +1601,8 @@ pack .tmsserver.xmpl -anchor w -pady 1 -fill x
 # Tooltip for example URL
 
 set wtip .tmsserver_xmpl_tooltip
-set bg $color::InfoBackground
-set fg $color::InfoText
+set bg $colorInfoBackground
+set fg $colorInfoText
 
 toplevel $wtip -bd 1 -relief solid
 wm withdraw $wtip
@@ -1789,7 +1788,7 @@ foreach event {Enter Leave Control-plus Control-minus \
 
 label $wtest.title -padx 1 -bd 0 -anchor w -text [mc l181]:
 grid $wtest.title -row 1 -column 1 -sticky we
-text $wtest.text -padx 1 -bd 1 -relief sunken -bg $color::Window -wrap word
+text $wtest.text -padx 1 -bd 1 -relief sunken -bg $colorWindow -wrap word
 grid $wtest.text -row 2 -column 1 -sticky we
 label $wtest.image -padx 1 -bd 1 -relief sunken -image ""
 label $wtest.size
@@ -2008,7 +2007,7 @@ proc incr_font_size {incr} {
   }
   update idletasks
 
-  foreach item {.xyrange_values .shading.algorithm_values \
+  foreach item {.xyrange_values .shading.algorithm.values \
 	.server.engine_values .server.interface_values} \
 	{if {[winfo exists $item]} {$item configure -justify left}}
   foreach item {.effects.gamma_scale .effects.contrast_scale \
@@ -2139,7 +2138,7 @@ proc srv_start {srv} {
       lappend params -Xbootclasspath/p:$engine
       lappend params -Dsun.java2d.renderer=sun.java2d.marlin.DMarlinRenderingEngine
     } else {
-      lappend params --patch-module java.desktop=$engine
+      lappend params --patch-module java.desktop="$engine"
     }
   }
 
@@ -2173,11 +2172,14 @@ proc srv_start {srv} {
   lappend params -Dsun.java2d.render.bufferSize=524288
 # lappend params -Dawt.useSystemAAFontSettings=on
 
-  set fd [open $::tmpdir/java_args w]
-  foreach item $params {puts $fd $item}
-  close $fd
-
-  lappend command $::java_cmd @$::tmpdir/java_args -jar $::server_jar
+  if {$::java_version <= 8} {
+    lappend command $::java_cmd {*}$params -jar $::server_jar
+  } else {
+    set fd [open $::tmpdir/java_args w]
+    foreach item $params {puts $fd "$item"}
+    close $fd
+    lappend command $::java_cmd @$::tmpdir/java_args -jar $::server_jar
+  }
 
   if {$::server_type == 1} {
     lappend command -config [file nativename $::tmpdir]
