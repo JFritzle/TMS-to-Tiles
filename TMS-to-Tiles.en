@@ -38,7 +38,7 @@ s08	"Contrast stretching"
 
 x01	"Server information"
 x02	"Version Java runtime"
-x03	"Version Mapsforge tile server"
+x03	"Version Mapsforge server"
 x04	"Server's Java archive"
 
 x11	"Server configuration"

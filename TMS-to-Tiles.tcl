@@ -1,6 +1,10 @@
 # Download and compose TMS server tiles
 # =====================================
 
+# Important:
+# - Only new "tasks" server type supported!
+# - At least Java version 11 required!
+
 # Notes:
 # - Additional user settings file is mandatory!
 #   Name of file = this script's full path
@@ -154,10 +158,8 @@ if {$tcl_version > 8.6} {
   }
 }
 
-if {$tcl_platform(os) == "Windows NT"} \
-	{lassign {1 1} yb yc}
-if {$tcl_platform(os) == "Linux"} \
-	{lassign {0 2} yb yc}
+if {$tcl_platform(os) == "Windows NT"}	{lassign {1 1} yb yc}
+if {$tcl_platform(os) == "Linux"}	{lassign {0 2} yb yc}
 foreach {item option value} {
 . background $colorBackground
 . bordercolor $colorBorder
@@ -219,25 +221,22 @@ if {$locale == "c"} {set locale "en"}
 
 set prefix [file rootname $script]
 
-set list {}
-lappend list $locale en
-foreach item [glob -nocomplain -tails -path $prefix. -type f ??] {
-  lappend list [lindex [split $item .] end]
-}
+set list [list $locale en]
+foreach item [glob -nocomplain -tails -path $prefix. -type f ??] \
+	{lappend list [lindex [split $item .] end]}
 
 unset locale
-foreach suffix $list {
-  set file $prefix.$suffix
-  if {[file exists $file]} {
-    if {[catch {source $file} result]} {
-      messagebox -title $title -icon error \
+foreach item $list {
+  set file $prefix.$item
+  if {![file exists $file]} continue
+  if {[catch {source $file} result]} {
+    messagebox -title $title -icon error \
 	-message "Error reading locale file '[file tail $file]':\n$result"
-      exit
-    }
-    set locale $suffix
-    ::msgcat::mclocale $locale
-    break
+    exit
   }
+  set locale $item
+  ::msgcat::mclocale $locale
+  break
 }
 if {![info exists locale]} {
   messagebox -title $title -icon error \
@@ -249,16 +248,13 @@ if {![info exists locale]} {
 # Filename = script's filename where file extension "tcl" is replaced by "ini"
 
 set file [file rootname $script].ini
-
-if {[file exist $file]} {
-  if {[catch {source $file} result]} {
-    messagebox -title $title -icon error \
-	-message "[mc i00 [file tail $file]]:\n$result"
-    exit
-  }
-} else {
+if {![file exist $file]} {
   messagebox -title $title -icon error \
 	-message "[mc i01 [file tail $file]]"
+  exit
+} elseif {[catch {source $file} result]} {
+  messagebox -title $title -icon error \
+	-message "[mc i00 [file tail $file]]:\n$result"
   exit
 }
 
@@ -276,11 +272,11 @@ if {$tcl_platform(os) == "Windows NT"}	{cd $env(SystemDrive)/}
 if {$tcl_platform(os) == "Linux"}	{cd /}
 
 foreach item $list {
-  if {![info exists $item]} {continue}
+  if {![info exists $item]} continue
   set value [set $item]
-  if {$value == ""} {continue}
+  if {$value == ""} continue
   if {$tcl_version >= 9.0} {set value [file tildeexpand $value]}
-  if {[lsearch -exact $cmds $item] != -1} {
+  if {$item in $cmds} {
     set exec [auto_execok $value]
     if {$exec == ""} {
       messagebox -title $title -icon error -message [mc e04 $value $item]
@@ -336,19 +332,17 @@ set console.font.size 8
 set dem.folder ""
 set shading.onoff 0
 set shading.magnitude 1.
-set shading.layer "asmap"
 set shading.algorithm "simple"
 set shading.simple.linearity 0.1
 set shading.simple.scale 0.666
 set shading.diffuselight.angle 50.
 set shading.asy.values [list 0.5 0 80 [expr max(1,$nprocs/3)] $nprocs true]
+array set shading.asy.array {}
 
 set tcp.port $tcp_port
 set tcp.interface $interface
 set tcp.maxconn 1024
-set threads.min 0
-set threads.max 8
-set log.requests 1
+set log.requests 0
 
 set use.magick "gm"
 set tiles.folder $cwd
@@ -356,9 +350,6 @@ set tiles.abort 1
 set tiles.compose 1
 set tiles.keep 0
 set composed.show 1
-# For compatibility only:
-set use.curl 1
-set tiles.write 1
 set http.keep 0
 set http.wait 0
 
@@ -369,17 +360,39 @@ set tms.x [lrepeat 21 0]
 set tms.y [lrepeat 21 0]
 set tms.servers ""
 
-foreach item {global tmsserver hillshading tiles} {
-  set fd [open "$ini_folder/$item.ini" a+]
+# Save/restore settings
+
+proc save_settings {file args} {
+  array set save {}
+  set fd [open $file a+]
   seek $fd 0
   while {[gets $fd line] != -1} {
     regexp {^(.*?)=(.*)$} $line "" name value
-    set $name $value
+    set save($name) $value
+  }
+  foreach name $args {set save($name) [set ::$name]}
+  seek $fd 0
+  chan truncate $fd
+  foreach name [lsort [array names save]] {puts $fd "$name=$save($name)"}
+  close $fd
+}
+
+proc restore_settings {file} {
+  if {![file exists $file]} return
+  set fd [open $file r]
+  while {[gets $fd line] != -1} {
+    regexp {^(.*?)=(.*)$} $line "" name value
+    set ::$name $value
   }
   close $fd
 }
-array set shading.asy.array {}
-set i 0; lmap v ${shading.asy.values} {set shading.asy.array($i) $v; incr i}
+
+# Restore saved settings
+
+foreach item {global hillshading tmsserver tiles} \
+	{restore_settings "$ini_folder/$item.ini"}
+set i 0
+lmap v ${shading.asy.values} {set shading.asy.array($i) $v; incr i}
 
 # Restore saved test tile numbers
 
@@ -418,11 +431,13 @@ set ctid [thread::create -joinable "
   thread::wait
   "]
 
-send $ctid {
+proc ctsend {script} "return \[send $ctid \$script\]"
+
+ctsend {
   foreach item {Consolas "Ubuntu Mono" "Noto Mono" "Liberation Mono"
   	[font configure TkFixedFont -family]} {
     set family [lsearch -nocase -exact -inline [font families] $item]
-    if {$family != ""} {break}
+    if {$family != ""} break
   }
   font create font -family $family -size $font_size
   text .txt -font font -wrap none -setgrid 1 -state disabled \
@@ -444,7 +459,7 @@ send $ctid {
   bind . <Control-KP_Subtract> {incr_font_size -1}
 
   bind . <Configure> {
-    if {"%W" != "."} {continue}
+    if {"%W" != "."} continue
     scan [wm geometry %W] "%%dx%%d+%%d+%%d" cols rows x y
     set geometry "$x $y $cols $rows"
   }
@@ -454,7 +469,7 @@ send $ctid {
     set py [.txt yview]
     set size [font configure font -size]
     incr size $incr
-    if {$size < 5 || $size > 20} {return}
+    if {$size < 5 || $size > 20} return
     font configure font -size $size
     update idletasks
     .txt xview moveto [lindex $px 0]
@@ -499,7 +514,7 @@ send $ctid {
 }
 
 if {$console != -1} {
-  set fdo [send $ctid "set fdo"]
+  set fdo [ctsend "set fdo"]
   thread::attach $fdo
   fconfigure $fdo -blocking 0 -buffering line -translation lf
   interp alias {} ::cputs {} ::puts $fdo
@@ -509,7 +524,7 @@ if {$console != -1} {
 
 if {$console == 1} {
   set console.show 1
-  send $::ctid "show_hide 1"
+  ctsend "show_hide 1"
 }
 
 # Mark output message
@@ -553,12 +568,12 @@ if {$tcl_platform(os) == "Windows NT" &&
   foreach item {"HKEY_LOCAL_MACHINE\\SOFTWARE\\JavaSoft" \
 		"HKEY_LOCAL_MACHINE\\SOFTWARE\\WOW6432Node\\JavaSoft"} {
     foreach key {JRE "Java Runtime Environment" JDK "Java Development Kit"} {
-      if {[catch {registry get "$item\\$key" CurrentVersion} value]} {continue}
-      if {[catch {registry get "$item\\$key\\$value" JavaHome} value]} {continue}
+      if {[catch {registry get "$item\\$key" CurrentVersion} value]} continue
+      if {[catch {registry get "$item\\$key\\$value" JavaHome} value]} continue
       set exec [auto_execok "[file normalize $value]/bin/java.exe"]
-      if {$exec != ""} {break}
+      if {$exec != ""} break
     }
-    if {$exec == ""} {continue}
+    if {$exec == ""} continue
     set java_cmd [lindex $exec 0]
     break
   }
@@ -584,30 +599,29 @@ if {!$rc} {
 
 if {$rc || $java_version == 0} \
   {error_message [mc e08 Java [get_shell_command $command] $result] exit}
+if {$java_version < 11} {error_message [mc e07 Java $java_string 11] exit}
 
-# Evaluate numeric tile server version
-# from output line ending with version string " version: x.y.z[.c]"
+# Evaluate numeric Mapsforge server version
+# from output line ending with version string " version: x.y.z.c"
 
 set server_version 0
 set server_string "unknown"
 set command [list $java_cmd -jar $server_jar -help]
 set rc [catch "exec $command 2>@1" result]
 foreach line [split $result \n] {
-  if {![regexp -nocase {^(?:.* version: )([0-9.]+)$} $line "" data]} {continue}
+  if {![regexp -nocase {^(?:.* version: )([0-9.]+)$} $line "" data]} continue
   set server_string $data
   set data [split $data .]
-  if {[llength $data] == 3} {set server_type 0}
-  if {[llength $data] == 4} {set server_type 1}
-  while {[llength $data] < 4} {lappend data 0}
+  if {[llength $data] != 4} \
+    {error_message [mc e07 "Mapsforge Server" $server_string 0.21.0.0] exit}
   foreach item $data {set server_version [expr 100*$server_version+$item]}
   break
 }
 
 if {$rc || $server_version == 0} \
   {error_message [mc e08 Server [get_shell_command $command] $result] exit}
-
-if {$server_version < 170400} \
-  {error_message [mc e07 "Mapsforge tile server" $server_string 0.17.4] exit}
+if {$server_version < 210000} \
+  {error_message [mc e07 "Mapsforge Server" $server_string 0.21.0.0] exit}
 
 # Looking for installed URL tool "curl"
 
@@ -620,7 +634,7 @@ catch {exec $curl -V} data
 set string [lindex [split $data] 1]
 set curl_version [split $string .]
 set curl_version [expr 1000*[lindex $curl_version 0]+[lindex $curl_version 1]]
-if {$curl_version < 7075} {error_message "[mc e07 curl $string 7.75.0]" exit}
+if {$curl_version < 7075} {error_message [mc e07 curl $string 7.75.0] exit}
 
 # Looking for installed GraphicsMagick's tool "gm"
 
@@ -630,13 +644,13 @@ if {[info exists gm_cmd] && $gm_cmd != ""} {set gm $gm_cmd}
 if {$gm == "" && $::tcl_platform(os) == "Windows NT"} {
   foreach dir {"GraphicsMagick*Q8*" "GraphicsMagick*"} {
     foreach var {"ProgramFiles" "ProgramFiles(x86)"} {
-      if {![info exists env($var)]} {continue}
+      if {![info exists env($var)]} continue
       set val $env($var)
       set gm [lindex [glob -nocomplain -type f \
 	"[file normalize $val]/$dir/gm.exe"] end]
-      if {$gm != ""} {break}
+      if {$gm != ""} break
     }
-    if {$gm != ""} {break}
+    if {$gm != ""} break
   }
 }
 if {$gm == ""} {set gm [lindex [auto_execok gm] 0]}
@@ -667,13 +681,13 @@ if {[info exists magick_cmd] && $magick_cmd != ""} {set magick $magick_cmd}
 if {$magick == "" && $::tcl_platform(os) == "Windows NT"} {
   foreach dir {"ImageMagick*Q8*" "ImageMagick*"} {
     foreach var {"ProgramFiles" "ProgramFiles(x86)"} {
-      if {![info exists env($var)]} {continue}
+      if {![info exists env($var)]} continue
       set val $env($var)
       set magick [lindex [glob -nocomplain -type f \
 	"[file normalize $val]/$dir/magick.exe"] end]
-      if {$magick != ""} {break}
+      if {$magick != ""} break
     }
-    if {$magick != ""} {break}
+    if {$magick != ""} break
   }
 }
 if {$magick == ""} {set magick [lindex [auto_execok magick] 0]}
@@ -725,12 +739,11 @@ pack .title -expand 1 -fill x -pady {0 3}
 
 set github "https://github.com/JFritzle/TMS-to-Tiles"
 tooltip .title "$github"
-if {$tcl_platform(platform) == "windows"} {
-  set exec "exec cmd.exe /C START {} $github"
-} elseif {$tcl_platform(os) == "Linux"} {
-  set exec "exec nohup xdg-open $github >/dev/null"
-}
-bind .title <ButtonRelease-1> "catch {$exec}"
+if {$tcl_platform(platform) == "windows"} \
+	{set exec "exec cmd.exe /C START {} $github"}
+if {$tcl_platform(os) == "Linux"} \
+	{set exec "exec nohup xdg-open $github >/dev/null"}
+bind .title <Button-1> "catch {$exec}"
 
 # Left menu column
 
@@ -875,13 +888,11 @@ proc scale_zoom {zoom} {
   # Shrink tiles range to valid range
   while {1} {
     set valid 1
-    foreach item {xmin xmax ymin ymax} {
-      if {[set ::tiles.$item] > $tmax} {set valid 0}
-    }
-    if {$valid} {break}
-    foreach item {xmin xmax ymin ymax} {
-      set ::tiles.$item [expr [set ::tiles.$item]>>1]
-    }
+    foreach item {xmin xmax ymin ymax} \
+	{if {[set ::tiles.$item] > $tmax} {set valid 0}}
+    if {$valid} break
+    foreach item {xmin xmax ymin ymax} \
+	{set ::tiles.$item [expr [set ::tiles.$item]>>1]}
   }
 
   # Recalculate tile numbers or coordinate values
@@ -902,9 +913,8 @@ switch_xyrange
 
 # Validate tile numbers
 
-foreach item {xmine xmaxe ymine ymaxe} {
-  .tiles.$item configure -validate key -vcmd "validate_tiles %W %P"
-}
+foreach item {xmine xmaxe ymine ymaxe} \
+	{.tiles.$item configure -validate key -vcmd "validate_tiles %W %P"}
 
 proc validate_tiles {widget tile} {
   if {[$widget cget -state] == "readonly"} {return 1}
@@ -944,9 +954,8 @@ proc validate_tiles {widget tile} {
 
 # Validate coordinates
 
-foreach item {xmine xmaxe ymine ymaxe} {
-  .coord.$item configure -validate key -vcmd "validate_coord %W %P"
-}
+foreach item {xmine xmaxe ymine ymaxe} \
+	{.coord.$item configure -validate key -vcmd "validate_coord %W %P"}
 
 proc validate_coord {widget coord} {
   if {[$widget cget -state] == "readonly"} {return 1}
@@ -1072,7 +1081,7 @@ proc tiles_compose_onoff {} {
   } else {
     pack forget .tiles_compose_onoff
   }
-  if {[winfo ismapped .]} {incr_font_size 0}
+  if {[winfo ismapped .]} {resize_toplevel_window .}
 }
 tiles_compose_onoff
 
@@ -1116,7 +1125,7 @@ checkbutton .output -text [mc c99] \
 	-variable console.show -command show_hide_console
 
 proc show_hide_console {} {
-  send $::ctid "show_hide ${::console.show}"
+  ctsend "show_hide ${::console.show}"
 }
 
 if {$console != -1} {
@@ -1125,7 +1134,7 @@ if {$console != -1} {
 
   # Map/Unmap events are generated by Windows only!
   set tid [thread::id]
-  send $ctid "
+  ctsend "
     wm protocol . WM_DELETE_WINDOW \
 	{thread::send -async $tid {.output invoke}}
     bind . <Unmap> {if {\"%W\" == \".\"} \
@@ -1162,6 +1171,7 @@ foreach widget {.shading .effects .server .tmsserver} {
 proc show_hide_toplevel_window {widget} {
   set onoff [set ::${widget}_show_hide]
   if {$onoff} {
+    resize_toplevel_window $widget
     position_toplevel_window $widget
     scan [wm geometry $widget] "%*dx%*d+%d+%d" x y
     wm transient $widget .
@@ -1175,10 +1185,22 @@ proc show_hide_toplevel_window {widget} {
   }
 }
 
+# Recalculate and force toplevel window size
+
+proc resize_toplevel_window {widget} {
+  update idletask
+  lassign [wm minsize $widget] w0 h0
+  set w1 [winfo reqwidth $widget]
+  set h1 [winfo reqheight $widget]
+  if {$w0 == $w1 && $h0 == $h1} return
+  wm minsize $widget $w1 $h1
+  wm maxsize $widget $w1 $h1
+}
+
 # Position toplevel window right/left besides main window
 
 proc position_toplevel_window {widget} {
-  if {![winfo ismapped .]} {return}
+  if {![winfo ismapped .]} return
   update idletasks
   scan [wm geometry .] "%dx%d+%d+%d" width height x y
   if {[tk windowingsystem] == "win32"} {
@@ -1234,10 +1256,9 @@ pack .shading.onoff -expand 1 -fill x
 
 # Hillshading as separate transparent overlay map only
 
-set shading.layer "asmap"
-radiobutton .shading.asmap -text [mc c82] -state disabled \
-	-variable shading.layer -value asmap
+radiobutton .shading.asmap -text [mc c82]
 pack .shading.asmap -anchor w -fill x
+.shading.asmap invoke
 
 # Choose DEM folder with HGT files
 
@@ -1318,16 +1339,13 @@ checkbutton .shading.asy.hq -text [mc l885] -variable shading.asy.array(5) \
 grid .shading.asy.hq -row 4 -column 1 -columnspan 2 -sticky we
 grid columnconfigure .shading.asy 1 -weight 1
 
-proc switch_shading_algorithm {} {
+proc update_shading_algorithm {} {
   catch "pack forget .shading.simple .shading.diffuselight .shading.asy"
   set widget ${::shading.algorithm}
-  if {[regexp {asy$} $widget]} {set widget asy}
-  pack .shading.$widget -after .shading.algorithm \
-	-expand 1 -fill x -pady 1
+  regsub {.*asy$} $widget {asy} widget
+  pack .shading.$widget -after .shading.algorithm -expand 1 -fill x -pady 1
+  resize_toplevel_window .shading
 }
-
-bind .shading.algorithm.values <<ComboboxSelected>> switch_shading_algorithm
-switch_shading_algorithm
 
 # Hillshading magnitude
 
@@ -1349,9 +1367,8 @@ proc reset_shading_values {} {
   set list {.shading.simple.value1 .shading.simple.value2 \
 	    .shading.diffuselight.value .shading.magnitude.value}
   foreach i {0 1 2} {lappend list .shading.asy.value$i}
-  foreach widget $list {
-    set ::[$widget cget -textvariable] [lindex [set ::$widget.minmax] 2]
-  }
+  foreach widget $list \
+	{set ::[$widget cget -textvariable] [lindex [set ::$widget.minmax] 2]}
   set ::shading.asy.array(5) true
 }
 
@@ -1371,17 +1388,17 @@ foreach widget {.shading.asy.value1 .shading.asy.value2} {
 
 # Save hillshading settings to folder ini_folder
 
-proc save_shading_settings {} {uplevel #0 {
-  lmap {i v} [array get shading.asy.array] {lset shading.asy.values $i $v}
-  set fd [open "$ini_folder/hillshading.ini" w]
-  foreach name {shading.onoff shading.algorithm \
+proc save_shading_settings {} {
+  lmap {i v} [array get ::shading.asy.array] {lset ::shading.asy.values $i $v}
+  save_settings "$::ini_folder/hillshading.ini" \
+	shading.onoff shading.algorithm \
 	shading.simple.linearity shading.simple.scale \
 	shading.diffuselight.angle shading.asy.values \
-	shading.magnitude dem.folder} {
-    puts $fd "$name=[set $name]"
-  }
-  close $fd
-}}
+	shading.magnitude dem.folder
+}
+
+bind .shading.algorithm.values <<ComboboxSelected>> update_shading_algorithm
+update_shading_algorithm
 
 # --- End of hillshading
 # --- Begin of visual rendering effects
@@ -1408,7 +1425,8 @@ set row 10
 grid .effects.color -row $row -column 1 -columnspan 3 -sticky we
 foreach item {gamma contrast} {
   incr row
-  grid .effects.${item}_label -row $row -column 1 -sticky w -padx {0 2}
+  grid .effects.${item}_label -row $row -column 1 -sticky w \
+	-padx {0 2} -pady {0 4}
   grid .effects.${item}_scale -row $row -column 2 -sticky we
   grid .effects.${item}_value -row $row -column 3 -sticky e
 }
@@ -1461,25 +1479,19 @@ pack .server.jar_value -in .server.jar -expand 1 -fill x
 # Server configuration
 
 label .server.config -text [mc x11]
-pack .server.config -pady {10 5}
+pack .server.config -pady {5 0}
 
 # Rendering engine
 
-if {$java_version <= 8} {
-  set pattern marlin-*-Unsafe
-} elseif {$java_version <= 10} {
-  set pattern marlin-*-Unsafe-OpenJDK9
-} else {
-  set pattern marlin-*-Unsafe-OpenJDK11
-}
+set pattern marlin-*-Unsafe-OpenJDK11
 set engines [glob -nocomplain -tails -type f \
-  -directory [file dirname $server_jar] $pattern.jar]
+	-directory [file dirname $server_jar] $pattern.jar]
 lappend engines "(default)"
 set engines [lsort -dictionary $engines]
 
 set width 0
 foreach item $engines \
-  {set width [expr max([font measure TkTextFont $item],$width)]}
+	{set width [expr max([font measure TkTextFont $item],$width)]}
 set width [expr $width/[font measure TkTextFont "0"]+1]
 
 labelframe .server.engine -labelanchor nw -text [mc x12]:
@@ -1501,11 +1513,11 @@ combobox .server.interface_values -width 10 \
 	-textvariable tcp.interface -values {"localhost" "all"}
 if {[.server.interface_values current] < 0} \
 	{.server.interface_values current 0}
-pack .server.interface -expand 1 -fill x -pady {6 1}
+pack .server.interface -expand 1 -fill x -pady {6 2}
 pack .server.interface_values -in .server.interface \
 	-side right -anchor e -expand 1 -padx {3 0}
 
-# Tile server TCP port number
+# Server TCP port number
 
 labelframe .server.port -labelanchor w -text [mc x15]:
 entry .server.port_value -textvariable tcp.port \
@@ -1527,38 +1539,10 @@ pack .server.maxconn -expand 1 -fill x -pady 1
 pack .server.maxconn_value -in .server.maxconn \
 	-side right -anchor e -expand 1 -padx {3 0}
 
-# Minimum number of concurrent threads
-
-labelframe .server.threadsmin -labelanchor w -text [mc x17]:
-entry .server.threadsmin_value -textvariable threads.min \
-	-width 6 -justify center
-set .server.threadsmin_value.minmax {0 {} 0}
-if {$server_type == 0} {
-tooltip .server.threadsmin_value "[mc x17] ≥ 0"
-pack .server.threadsmin -expand 1 -fill x -pady {6 1}
-pack .server.threadsmin_value -in .server.threadsmin \
-	-side right -anchor e -expand 1 -padx {3 0}
-}
-
-# Maximum number of concurrent threads
-
-labelframe .server.threadsmax -labelanchor w -text [mc x18]:
-entry .server.threadsmax_value -textvariable threads.max \
-	-width 6 -justify center
-set .server.threadsmax_value.minmax {4 {} 8}
-if {$server_type == 0} {
-tooltip .server.threadsmax_value "[mc x18] ≥ 4"
-pack .server.threadsmax -expand 1 -fill x -pady 1
-pack .server.threadsmax_value -in .server.threadsmax \
-	-side right -anchor e -expand 1 -padx {3 0}
-}
-
 # Enable/disable server request logging
 
 checkbutton .server.logrequests -text [mc x19] -variable log.requests
-if {$server_type == 1} {
 pack .server.logrequests -expand 1 -fill x
-}
 
 # Reset server configuration
 
@@ -1567,16 +1551,13 @@ tooltip .server.reset [mc b92t]
 pack .server.reset -pady {5 0}
 
 proc reset_server_values {} {
-  foreach widget {.server.port_value .server.maxconn_value \
-	.server.threadsmin_value .server.threadsmax_value} {
-    set ::[$widget cget -textvariable] [lindex [set ::$widget.minmax] 2]
-  }
+  foreach widget {.server.port_value .server.maxconn_value} \
+	{set ::[$widget cget -textvariable] [lindex [set ::$widget.minmax] 2]}
   .server.engine_values current 0
   .server.interface_values set $::interface
 }
 
-foreach widget {.server.port_value .server.maxconn_value \
-	.server.threadsmin_value .server.threadsmax_value} {
+foreach widget {.server.port_value .server.maxconn_value} {
   $widget configure -validate all -vcmd {validate_number %W %V %P " " "int"}
   bind $widget <Shift-ButtonRelease-1> \
 	{set [%W cget -textvariable] [lindex ${::%W.minmax} 2]}
@@ -1616,7 +1597,7 @@ set col1 {"host" "port" "path" "{z}" "{x}" "{y}" "query"}
 set col2 {}
 set row 0
 while {$row < 7} {
-  incr row	
+  incr row
   lappend col2 " … [mc l12$row]"
 }
 foreach col {1 2} {
@@ -1694,8 +1675,8 @@ grid .tmsserver.grid.add -row 2 -column 1 -sticky we
 
 proc add_server_url {} {
   set url [string trim ${::tms.url}]
-  if {$url == ""} {return}
-  if {[lsearch -exact ${::tms.list} $url] >= 0} {return}
+  if {$url == ""} return
+  if {[lsearch -exact ${::tms.list} $url] >= 0} return
   if {[catch {::uri::split $url}]} {
     error_message "[mc e12]:\n$url" return
     return
@@ -1724,18 +1705,19 @@ pack configure .tmsserver.grid.file.button -fill y
 grid .tmsserver.grid.file -row 3 -column 2 -columnspan 3 -sticky we -padx {5 0}
 
 proc merge_server_file {} {
-  if {![file exists ${::tms.servers}]} {return}
+  if {![file exists ${::tms.servers}]} return
   set fd [open ${::tms.servers} r]
   while {[gets $fd line] != -1} {
     set url [string trim $line]
-    if {[catch {::uri::split $url}]} {continue}
-    if {[lsearch -exact ${::tms.list} $url] != -1} {continue}
+    if {[catch {::uri::split $url}]} continue
+    if {[lsearch -exact ${::tms.list} $url] != -1} continue
     lappend ::tms.list $url
     .tmsserver.list_values see end
   }
   close $fd
   .tmsserver.list_values configure \
 	-height [expr min([llength ${::tms.list}],12)]
+  resize_toplevel_window .tmsserver
 }
 
 proc set_server_file {} {
@@ -1782,9 +1764,8 @@ bind $wtest <Double-ButtonRelease-3> "wm withdraw $wtest"
 
 set focus$wtest ""
 foreach event {Enter Leave Control-plus Control-minus \
-	Control-KP_Add Control-KP_Subtract} {
-  bind $wtest <$event> [bind .tmsserver <$event>]
-}
+	Control-KP_Add Control-KP_Subtract} \
+	{bind $wtest <$event> [bind .tmsserver <$event>]}
 
 label $wtest.title -padx 1 -bd 0 -anchor w -text [mc l181]:
 grid $wtest.title -row 1 -column 1 -sticky we
@@ -1796,7 +1777,7 @@ label $wtest.size
 # Test URL
 
 proc test_server_url {} {
-  set url_pattern [string trim ${::tms.url}]
+  set url [string trim ${::tms.url}]
   set zoom ${::tms.z}
   set xmin [set ::tms.ax($zoom)]
   set ymin [set ::tms.ay($zoom)]
@@ -1804,7 +1785,7 @@ proc test_server_url {} {
   set ymax $ymin
   set prefix "[::fileutil::tempdir]/"
   set suffix tmp
-  set srv ""
+  set task ""
   set ::cancel 0
 
   set tmpfile "$prefix$zoom.$xmin.$ymin.$suffix"
@@ -1829,7 +1810,7 @@ proc test_server_url {} {
   lappend test_result [list [mc l182] $url]
   lappend test_result [list "curl return code" "$rc $result"]
   foreach item $log {
-    if {![regexp {^< } $item]} {continue}
+    if {![regexp {^< } $item]} continue
     regexp {^< ([^:]*):?(.*)} $item {} head tail
     lappend test_result [list $head $tail]
   }
@@ -1862,7 +1843,7 @@ proc test_server_url {} {
   foreach item $test_result {
     lassign $item head tail
     set head [string trim $head]
-    if {$head == ""} {continue}
+    if {$head == ""} continue
     set str [format "%-17s" $head]
     set tail [string trim $tail]
     if {$tail != ""} {append str ": $tail"}
@@ -1892,63 +1873,42 @@ proc test_server_url {} {
 
 # Update global settings to folder ini_folder
 
-proc save_global_settings {} {uplevel #0 {
-  array set ini_settings {}
-  set fd [open "$ini_folder/global.ini" r]
-  while {[gets $fd line] != -1} {
-    regexp {^(.*?)=(.*)$} $line "" name value
-    set ini_settings($name) $value
-  }
-  close $fd
+proc save_global_settings {} {
   scan [wm geometry .] "%dx%d+%d+%d" width height x y
-  set window.geometry "$x $y $width $height"
-  set font.size [font configure TkDefaultFont -size]
-  set console.geometry [send $ctid "set geometry"]
-  set console.font.size [send $ctid "font configure font -size"]
-  foreach name {rendering.engine maps.contrast maps.gamma \
-	tcp.maxconn threads.min threads.max log.requests \
+  set ::window.geometry "$x $y $width $height"
+  set ::font.size [font configure TkDefaultFont -size]
+  set ::console.geometry [ctsend "set geometry"]
+  set ::console.font.size [ctsend "font configure font -size"]
+  save_settings "$::ini_folder/global.ini" \
+	rendering.engine maps.contrast maps.gamma \
+	tcp.maxconn log.requests \
 	window.geometry font.size \
-	console.show console.geometry console.font.size} {
-    set ini_settings($name) [set $name]
-  }
-  set fd [open "$ini_folder/global.ini" w]
-  fconfigure $fd -buffering full
-  foreach name [lsort [array names ini_settings]] {
-    puts $fd "$name=$ini_settings($name)"
-  }
-  close $fd
-  unset ini_settings
-}}
+	console.show console.geometry console.font.size
+}
 
 # Save TMS server settings to folder ini_folder
 
-proc save_tmsserver_settings {} {uplevel #0 {
-  set tms.x [lmap i [lsort -integer [array names tms.ax]] {set tms.ax($i)}]
-  set tms.y [lmap i [lsort -integer [array names tms.ay]] {set tms.ay($i)}]
-  set fd [open "$ini_folder/tmsserver.ini" w]
-  fconfigure $fd -buffering full
-  foreach name {tms.url tms.list tms.x tms.y tms.z tms.servers} {
-    puts $fd "$name=[set $name]"
-  }
-  close $fd
-}}
+proc save_tmsserver_settings {} {
+  set ::tms.x [lmap i [lsort -integer [array names ::tms.ax]] \
+	{set ::tms.ax($i)}]
+  set ::tms.y [lmap i [lsort -integer [array names ::tms.ay]] \
+	{set ::tms.ay($i)}]
+  save_settings "$::ini_folder/tmsserver.ini" \
+	tms.url tms.list tms.x tms.y tms.z tms.servers
+}
 
 # Save tiles settings to folder ini_folder
 
-proc save_tiles_settings {} {uplevel #0 {
-  set fd [open "$ini_folder/tiles.ini" w]
-  fconfigure $fd -buffering full
-  set xyrange.mode [.xyrange_values current]
-  foreach name {tiles.folder tiles.prefix xyrange.mode zoom.level \
+proc save_tiles_settings {} {
+  set ::xyrange.mode [.xyrange_values current]
+  save_settings "$::ini_folder/tiles.ini" \
+	tiles.folder tiles.prefix xyrange.mode zoom.level \
 	tiles.xmin tiles.xmax tiles.ymin tiles.ymax \
 	coord.xmin coord.xmax coord.ymin coord.ymax \
-	tiles.write tiles.abort tiles.compose tiles.keep composed.show \
-	tcp.interface tcp.port shading.layer \
-	use.curl use.magick http.wait http.keep} {
-    puts $fd "$name=[set $name]"
-  }
-  close $fd
-}}
+	tiles.abort tiles.compose tiles.keep composed.show \
+	tcp.interface tcp.port \
+	use.magick http.wait http.keep
+}
 
 # Validate signed/unsigned int/float number value
 
@@ -1986,7 +1946,7 @@ proc incr_font_size {incr} {
   set size [font configure TkDefaultFont -size]
   if {$size < 0} {set size [expr round(-$size/[tk scaling])]}
   incr size $incr
-  if {$size < 5 || $size > 20} {return}
+  if {$size < 5 || $size > 20} return
   set fonts {TkDefaultFont TkTextFont TkFixedFont TkTooltipFont title_font}
   foreach item $fonts {font configure $item -size $size}
   set height [expr [winfo reqheight .title]-2]
@@ -2013,6 +1973,8 @@ proc incr_font_size {incr} {
   foreach item {.effects.gamma_scale .effects.contrast_scale \
 	.zoom_scale .tmsserver.grid.z.scale} \
 	{if {[winfo exists $item]} {$item configure -width $height}}
+  foreach item {. .shading .effects .server .tmsserver} \
+	{resize_toplevel_window $item}
 }
 
 # Check selection for completeness
@@ -2022,10 +1984,9 @@ proc selection_ok {} {
     error_message [mc e41] return
     return 0
   }
-  set count 0	
-  foreach item {xmin xmax ymin ymax} {
-    if {[set ::tiles.$item] == ""} {incr count}
-  }
+  set count 0
+  foreach item {xmin xmax ymin ymax} \
+	{if {[set ::tiles.$item] == ""} {incr count}}
   if {$count} {
     error_message [mc e42 $count] return
     return 0
@@ -2093,16 +2054,13 @@ proc process_start {command process} {
 
 proc process_kill {process} {
 
-  if {![process_running $process]} {return}
+  if {![process_running $process]} return
   namespace upvar $process fd fd pid pid
 
   fileevent $fd readable [regsub {m52} [fileevent $fd readable] {m53}]
 
-  if {$::tcl_platform(os) == "Windows NT"} {
-    catch {exec TASKKILL /F /PID $pid}
-  } elseif {$::tcl_platform(os) == "Linux"} {
-    catch {exec kill -SIGTERM $pid}
-  }
+  if {$::tcl_platform(os) == "Windows NT"} {catch {exec TASKKILL /F /PID $pid}}
+  if {$::tcl_platform(os) == "Linux"} {catch {exec kill -SIGTERM $pid}}
 
   if {![info exist ::$process.eof]} {vwait $process.eof}
 
@@ -2114,32 +2072,20 @@ proc process_running {process} {
   return [expr [namespace exists $process] && ![info exists ::$process.eof]]
 }
 
-# Mapsforge hillshading server start
+# Mapsforge server start
 
-proc srv_start {srv} {
-
-  if {!${::shading.onoff}} {return}
-
-  set port [set ::tcp.port]
-  set name "Hillshading"
+proc srv_start {} {
 
   # Compose command line
 
-  lappend params -Xmx1G -Xms256M -Xmn256M
+  set params {-Xmx1G -Xms256M -Xmn256M}
   if {[info exists ::java_args]} {lappend params {*}$::java_args}
   lappend params -Dfile.encoding=UTF-8
 
   set engine ${::rendering.engine}
   if {$engine != "(default)"} {
     set engine [file dirname $::server_jar]/$engine
-    if {$::java_version <= 8} {
-      lappend params -Xbootclasspath/p:$engine
-      set engine [regsub {.jar} $engine {-sun-java2d.jar}]
-      lappend params -Xbootclasspath/p:$engine
-      lappend params -Dsun.java2d.renderer=sun.java2d.marlin.DMarlinRenderingEngine
-    } else {
-      lappend params --patch-module java.desktop="$engine"
-    }
+    lappend params --patch-module java.desktop="$engine"
   }
 
 # set now [clock format [clock seconds] -format "%Y-%m-%d_%H-%M-%S"]
@@ -2172,38 +2118,30 @@ proc srv_start {srv} {
   lappend params -Dsun.java2d.render.bufferSize=524288
 # lappend params -Dawt.useSystemAAFontSettings=on
 
-  if {$::java_version <= 8} {
-    lappend command $::java_cmd {*}$params -jar $::server_jar
-  } else {
-    set fd [open $::tmpdir/java_args w]
-    foreach item $params {puts $fd "$item"}
-    close $fd
-    lappend command $::java_cmd @$::tmpdir/java_args -jar $::server_jar
-  }
+  set fd [open $::tmpdir/java_args w]
+  foreach item $params {puts $fd "$item"}
+  close $fd
+  lappend command $::java_cmd @$::tmpdir/java_args -jar $::server_jar
+  lappend command -config [file nativename $::tmpdir]
 
-  if {$::server_type == 1} {
-    lappend command -config [file nativename $::tmpdir]
+  # Configure server
 
-    set data "terminate=true\n"
-    append data "requestlog-format="
-    if {${::log.requests}} {append data "From %{client}a Get %U%q Status %s Size %O bytes Time %{ms}T ms"}
-    append data "\n"
-    if {${::tcp.interface} == "localhost"} {append data "host=localhost\n"}
-    append data "port=$port\n"
-    append data "acceptQueueSize=${::tcp.maxconn}\n"
+  set data "terminate=true\n"
+  append data "requestlog-format="
+  if {${::log.requests}} {append data "From %{client}a Get %U%q Status %s Size %O bytes Time %{ms}T ms"}
+  append data "\n"
+  if {${::tcp.interface} == "localhost"} {append data "host=localhost\n"}
+  set port [set ::tcp.port]
+  append data "port=$port\n"
+  append data "acceptQueueSize=${::tcp.maxconn}\n"
 
-    set fd [open $::tmpdir/server.properties w]
-    puts -nonewline $fd $data
-    close $fd
+  set fd [open $::tmpdir/server.properties w]
+  puts $fd $data
+  close $fd
 
-  }
+  # Configure task
 
   set params {}
-  if {$::server_type == 0} {
-    lappend params interface ${::tcp.interface}
-    lappend params port $port
-    lappend params mapfiles ""
-  }
 
   set algorithm ${::shading.algorithm}
   if {$algorithm == "simple"} {
@@ -2227,34 +2165,19 @@ proc srv_start {srv} {
   lappend params hillshading-magnitude "$magnitude"
   lappend params demfolder ${::dem.folder}
 
-  if {$::server_type == 0} {
-    lappend params max-queuesize ${::tcp.maxconn}
-    lappend params max-thread ${::threads.max}
-    lappend params min-thread ${::threads.min}
-    if {$::server_version >= 190000} {lappend params terminate true}
-  }
+  set data ""
+  foreach {item value} $params {append data "$item=$value\n"}
 
-  if {$::server_type == 0} {
+  set fd [open $::tmpdir/tasks/Hillshading.properties w]
+  puts $fd $data
+  close $fd
 
-    foreach {item value} $params {lappend command -$item $value}
-
-  } elseif {$::server_type == 1} {
-
-    set data ""
-    foreach {item value} $params {append data "$item=$value\n"}
-
-    set fd [open $::tmpdir/tasks/$name.properties w]
-    puts -nonewline $fd $data
-    close $fd
-
-  }
-
-  set text "$name Server \[[string toupper $srv]\]"
+  set text "Mapsforge Server \[SRV]\]"
   # Server not yet running: TCP port is currently in use?
   set count 0
   while {$count < 5} {
     set rc [catch {socket -server {} -myaddr 127.0.0.1 $port} fd]
-    if {!$rc} {break}
+    if {!$rc} break
     incr count
     after 200
   }
@@ -2270,48 +2193,43 @@ proc srv_start {srv} {
   cputi "[mc m54 $text] ..."
   cputs "[get_shell_command $command]"
 
-  process_start $command $srv
+  process_start $command srv
 
   # Wait until port becomes ready to accept connections or server aborts
   # Send dummy render request and wait for rendering initialization
 
-  set url "http://127.0.0.1:$port/0/0/0.png"
-  if {$::server_type == 1} {append url "?task=$name"}
-  while {[process_running $srv]} {
+  set url "http://127.0.0.1:$port"
+  while {[process_running srv]} {
     if {[catch {::http::geturl $url} token]} {after 10; continue}
     set size [::http::size $token]
     ::http::cleanup $token
-    if {$size} {break}
+    if {$size} break
   }
   after 20
   update
 
-  if {![process_running $srv]} {error_message [mc m55 $text] return; return}
-  set ${srv}::port $port
-  set ${srv}::cr "\r"
+  if {![process_running srv]} {error_message [mc m55 $text] return; return}
+  set srv::port $port
+  set srv::cr "\r"
   if {${::log.requests}} {cputs "\r"}
 
 }
 
 # Mapsforge hillshading server stop
 
-proc srv_stop {srv} {
+proc srv_stop {} {
 
-  if {![process_running $srv]} {return}
+  if {![process_running srv]} return
 
-  if {$::server_version < 190000} {
-    process_kill $srv
-  } else {
-    namespace upvar $srv port port
-    set url "http://127.0.0.1:$port/terminate"
-    if {![catch {::http::geturl $url} token]} {
-      if {[::http::status $token] == "eof"} {set code 200} \
-      else {set code [::http::ncode $token]}
-      if {$code != 200} {process_kill $srv; return}
-      ::http::cleanup $token
-    }
-    if {![info exist ::$srv.eof]} {vwait $srv.eof}
+  namespace upvar srv port port
+  set url "http://127.0.0.1:$port/terminate"
+  if {![catch {::http::geturl $url} token]} {
+    if {[::http::status $token] == "eof"} {set code 200} \
+    else {set code [::http::ncode $token]}
+    if {$code != 200} {process_kill srv; return}
+    ::http::cleanup $token
   }
+  if {![info exist ::srv.eof]} {vwait srv.eof}
 
 }
 
@@ -2344,14 +2262,11 @@ proc pipe_run {exe args} {
 # Kill command pipe
 
 proc pipe_kill {} {
-  if {![namespace exists pipe]} {return}
-  if {[info exists pipe::rc]} {return}
+  if {![namespace exists pipe]} return
+  if {[info exists pipe::rc]} return
   namespace upvar pipe pid pid exe exe
-  if {$::tcl_platform(os) == "Windows NT"} {
-    catch {exec TASKKILL /F /PID $pid}
-  } elseif {$::tcl_platform(os) == "Linux"} {
-    catch {exec kill -SIGTERM $pid}
-  }
+  if {$::tcl_platform(os) == "Windows NT"} {catch {exec TASKKILL /F /PID $pid}}
+  if {$::tcl_platform(os) == "Linux"} {catch {exec kill -SIGTERM $pid}}
   if {![info exists pipe::rc]} {vwait pipe::rc}
   cputi [mc m53 $pid $exe]
 }
@@ -2360,7 +2275,7 @@ proc pipe_kill {} {
 
 proc download_with_curl {} {uplevel 1 {
 
-  set url [string trim $url_pattern]
+  set url [string trim $url]
   regsub "\\$?{x}" $url "\[$xmin-$xmax\]" url
   regsub "\\$?{y}" $url "\[$ymin-$ymax\]" url
   regsub "\\$?{z}" $url "$zoom" url
@@ -2405,18 +2320,18 @@ proc download_with_curl {} {uplevel 1 {
   lassign {-1 "unknown"} ::curl_rc ::curl_result
   fileevent $fd readable "
     while {\[gets $fd line\] >= 0} {
-      if {\[info exists pipe::abort\]} {continue}
+      if {\[info exists pipe::abort\]} continue
       if {\[string range \$line 0 1\] != {! }} {
 	puts $fdlog \[string trimright \$line \\r\]
       } else {
 	lmap {name value} \[string range \$line 2 end\] {set \$name \$value}
-	if {!$::curl_echo} {continue}
+	if {!$::curl_echo} continue
 	if {\$curl_rc} {
 	  cputs \"\\r> curl error \$curl_rc: \$curl_result\"
 	  set pipe::abort 1
 	} else {
 	  cputs \"\\r> GET \$curl_url -> HTTP status \$curl_status, \$curl_size bytes data\"
-	  if {\$curl_status == 200 || \$curl_status == 404} {continue}
+	  if {\$curl_status == 200 || \$curl_status == 404} continue
 	  if {${::tiles.abort}} {set pipe::abort 1; after 0 pipe_kill}
 	}
       }
@@ -2455,9 +2370,7 @@ proc run_render_job {} {
 
   set ::cancel 0
 
-  foreach item {xmin xmax ymin ymax} {
-    upvar ::tiles.$item $item
-  }
+  foreach item {xmin xmax ymin ymax} {upvar ::tiles.$item $item}
   upvar ::zoom.level zoom
 
   set text "\n[mc m61] ...\n"
@@ -2521,40 +2434,34 @@ proc run_render_job {} {
   set logsep [string repeat - 100]
   set logfmt "%-17s : %s"
   set fdlog [open $logfile w+]
-  fconfigure $fdlog -buffering full
 
   set rc 0
-  set ovlmap [expr ${::shading.onoff} && {${::shading.layer} == "asmap"}]
-  foreach srv {"srv" "ovl"} {
+  set shading ${::shading.onoff}
+  foreach task {"Map" "Hillshading"} {
 
-    if {$srv == "ovl" && !$ovlmap} {continue}
+    if {$task == "Hillshading" && !$shading} continue
 
-    if {$srv == "srv"} {set suffix "img"}
-    if {$srv == "ovl"} {set suffix "ovl"}
+    if {$task == "Map"} {set suffix "img"}
+    if {$task == "Hillshading"} {set suffix "ovl"}
 
     # Url
 
-    if {$srv == "srv"} {set url_pattern ${::tms.url}}
-    if {$srv == "ovl"} {
-      set sfx {}
-      set url_pattern "http://127.0.0.1:${::tcp.port}/{z}/{x}/{y}.png"
-      if {$::server_type == 1} {lappend sfx "task=Hillshading"}
-      if {$::tile_size != 256} {lappend sfx "tileRenderSize=$::tile_size"}
-      set sfx [join $sfx "&"]
-      if {$sfx != ""} {set sfx "?$sfx"}
-      append url_pattern $sfx
+    if {$task == "Map"} {set url ${::tms.url}}
+    if {$task == "Hillshading"} {
+      set url "http://127.0.0.1:${::tcp.port}/{z}/{x}/{y}.png?task=Hillshading"
+      if {$::tile_size != 256} {append url "&tileRenderSize=$::tile_size"}
     }
-    cputs "[mc m70 $url_pattern] ...\n"
+    cputs "[mc m70 $url] ...\n"
 
     puts $fdlog $logsep
-    puts $fdlog "Download tiles from URL '$url_pattern' ..."
+    puts $fdlog "Download tiles from URL '$url' ..."
     puts $fdlog $logsep
 
     # Start server
 
-    if {$srv == "ovl"} {
-      srv_start $srv
-      if {![process_running $srv]} {
+    if {$task == "Hillshading"} {
+      srv_start
+      if {![process_running srv]} {
 	set rc 1
 	break
       }
@@ -2563,18 +2470,18 @@ proc run_render_job {} {
     # Download with "curl"
 
     set start [clock milliseconds]
-    set ::curl_echo [expr {$srv == "srv"}]
+    set ::curl_echo [expr {$task == "Map"}]
     set rc [download_with_curl]
     set stop [clock milliseconds]
 
     # Stop server
 
-    if {$srv == "ovl"} {
+    if {$task == "Hillshading"} {
       cputs ""
-      srv_stop $srv
+      srv_stop
     }
 
-    if {$::cancel} {break}
+    if {$::cancel} break
 
     # Report result
 
@@ -2588,7 +2495,7 @@ proc run_render_job {} {
     cputs "... [mc m77]\n"
 
     if {$valid == 0} {set rc 1}
-    if {$rc} {break}
+    if {$rc} break
 
   }
   close $fdlog
@@ -2597,7 +2504,7 @@ proc run_render_job {} {
 
   if {$rc || $::cancel} {
     file delete -force {*}[lmap tile $tiles {list $tile.img}]
-    if {$ovlmap} {file delete -force {*}[lmap tile $tiles {list $tile.ovl}]}
+    if {$shading} {file delete -force {*}[lmap tile $tiles {list $tile.ovl}]}
   }
 
   if {$::cancel} {
@@ -2619,20 +2526,14 @@ proc run_render_job {} {
   upvar ::use.magick use_magick
   set exe [set ::$use_magick]
 
-  if {$use_magick == "gm"} {
-    set ::env(MAGICK_TMPDIR) $folder
-  } elseif {$use_magick == "magick"} {
-    set ::env(MAGICK_TEMPORARY_PATH) $folder
-  }
+  if {$use_magick == "gm"}	{set ::env(MAGICK_TMPDIR) $folder}
+  if {$use_magick == "magick"}	{set ::env(MAGICK_TEMPORARY_PATH) $folder}
 
   # Fill missing tiles by white tile
 
   set void $::tmpdir/void.png
-  if {$use_magick == "gm"} {
-    exec $exe convert -size 256x256 xc:white $void
-  } elseif {$use_magick == "magick"} {
-    exec $exe -size 256x256 canvas:white $void
-  }
+  if {$use_magick == "gm"}	{exec $exe convert -size 256x256 xc:white $void}
+  if {$use_magick == "magick"}	{exec $exe -size 256x256 canvas:white $void}
 
   while {1} {
 
@@ -2665,7 +2566,7 @@ proc run_render_job {} {
     while {$xtile <= $xmax} {
       set tile $prefix$zoom.$xtile.$ytile
       incr xtile
-      if {![file exists $tile.img]} {continue}
+      if {![file exists $tile.img]} continue
       if {$level == "" && [lindex [filetype $tile.img] end] == "png"} {
 	file rename -force $tile.img $tile.png
 	puts "\r> rename $tile.img $tile.png"
@@ -2709,7 +2610,7 @@ proc run_render_job {} {
 
   if {$rc || $::cancel} {
     file delete -force {*}[lmap tile $tiles {list $tile.png}]
-    if {$ovlmap} {file delete -force {*}[lmap tile $tiles {list $tile.ovl}]}
+    if {$shading} {file delete -force {*}[lmap tile $tiles {list $tile.ovl}]}
   }
 
   if {$::cancel} {
@@ -2724,7 +2625,7 @@ proc run_render_job {} {
 
   # Compose map tiles and alpha transparent hillshading overlay tiles
 
-  if {$ovlmap} {
+  if {$shading} {
 
   cputs "\n[mc m84c] ...\n"
   set start [clock milliseconds]
@@ -2742,7 +2643,7 @@ proc run_render_job {} {
       incr xtile
       set map $tile.png
       set ovl $tile.ovl
-      if {![file exists $ovl]} {continue}
+      if {![file exists $ovl]} continue
       if {![file exists $map]} {set map $void}
       lappend clean $ovl
       if {$use_magick == "gm"} {
@@ -2796,7 +2697,7 @@ proc run_render_job {} {
 
   }
 
-  if {!${::tiles.compose}} {break}
+  if {!${::tiles.compose}} break
 
   # Compose tiles to image
 
@@ -2871,13 +2772,13 @@ proc run_render_job {} {
 
   cd $::cwd
 
-  if {$rc || $::cancel} {return}
-  if {!${::composed.show}} {return}
+  if {$rc || $::cancel} return
+  if {!${::composed.show}} return
 
   # Show composed image by background job
 
   set file $folder/$composed.png
-  if {![file exists $file]} {return}
+  if {![file exists $file]} return
   if {$::tcl_platform(platform) == "windows"} {
     set exec "exec cmd.exe /C START {} \"$file\""
   } elseif {$::tcl_platform(os) == "Linux"} {
@@ -2912,18 +2813,17 @@ wm deiconify .
 while {1} {
   vwait action
   if {$action == 0} {
-    foreach item {global tmsserver shading tiles} {save_${item}_settings}
+    foreach item {global shading tmsserver tiles} {save_${item}_settings}
     exit
   }
   unset action
-  if {[selection_ok]} {break}
+  if {[selection_ok]} break
 }
 
 # Create server's temporary files folder
 
 append tmpdir /[format "TMS%8.8x" [pid]]
-file mkdir $tmpdir
-if {$server_type == 1} {file mkdir $tmpdir/tasks}
+file mkdir $tmpdir/tasks
 
 # Create server logging properties
 
@@ -2970,12 +2870,12 @@ wm withdraw .
 
 # Save settings to folder ini_folder
 
-foreach item {global tmsserver shading tiles} {save_${item}_settings}
+foreach item {global shading tmsserver tiles} {save_${item}_settings}
 
 # Wait until output console window was closed
 
-if {[send $ctid "winfo ismapped ."]} {
-  send $ctid "
+if {[ctsend "winfo ismapped ."]} {
+  ctsend "
     write \"\n[mc m99]\"
     wm protocol . WM_DELETE_WINDOW {}
     bind . <ButtonRelease-3> {destroy .}

@@ -38,7 +38,7 @@ s08	"Kontrastspreizung"
 
 x01	"Server-Information"
 x02	"Version Java-Runtime"
-x03	"Version Mapsforge Tile Server"
+x03	"Version Mapsforge Server"
 x04	"Java-Archiv des Servers"
 
 x11	"Server-Konfiguration"
