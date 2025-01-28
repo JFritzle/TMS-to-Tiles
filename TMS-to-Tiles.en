@@ -1,0 +1,178 @@
+# Script's English localized text strings
+
+# Rules:
+# message label must exactly match message label in script
+# followed by localized text string
+
+# Documentation:
+# https://www.tcl-lang.org/man/tcl/TclCmd/msgcat.htm
+
+# ISO 639-1 code for English language: en
+set iso_639_1 "en"
+
+::msgcat::mcmset $iso_639_1 {	# Begin of translations
+
+i00	"Error reading user settings\nfrom file '%s'"
+i01	"Mandatory user settings missing,\nfile '%s' not found"
+
+l01	"TMS to Tiles"
+
+e01	"%s '%s'\nalready running with process id %d"
+e02	"Terminate process by 'kill'\nand restart?"
+e03	"Operating system %s not supported"
+e04	"Command '%s'\nset by variable '%s' is not executable"
+e05	"Folder/file '%s'\nset by variable '%s' does not exist"
+e07	"%s version is '%s'.\nAt least version '%s' is required!"
+e08	"%s version cannot be determined from command output!\n\nCommand:\n%s\nOutput:\n%s"
+e09	"Neither program 'gm' from 'GraphicsMagick'\nnor program 'magick' from 'ImageMagick' found!"
+e10	"Program 'curl' not found!"
+
+c01	"Configure TMS tiles server"
+c02	"Configure hillshading server"
+c03	"Configure hillshading"
+c04	"Color post-processing"
+
+s06	"Color post-processing"
+s07	"Gamma correction"
+s08	"Contrast stretching"
+
+x01	"Server information"
+x02	"Version Java runtime"
+x03	"Version Mapsforge server"
+x04	"Server's Java archive"
+
+x11	"Server configuration"
+x12	"Rendering engine"
+x13	"Network interface(s)"
+x15	"TCP port"
+x16	"TCP accept queue size"
+x17	"Minimum concurrent threads"
+x18	"Maximum concurrent threads"
+x19	"Logging of server requests"
+
+b01	"Start"
+b02	"Quit"
+b03	"Cancel"
+
+l11	"Tile server's URL"
+l120	"URL components description"
+l121	"hostname or IP address"
+l122	"optional port number"
+l123	"optional path component(s)"
+l124	"placeholder for zoom level"
+l125	"placeholder for tile number in X direction"
+l126	"placeholder for tile number in Y direction"
+l127	"optional query string (e.g. API key)"
+l129	"Optional components in square brackets depend on server"
+
+l13	"Test URL with tile values"
+l14	"Add URL to server archive"
+l15	"Add URLs from text file"
+l151	"Text file"
+l16	"Server archive"
+
+l181	"URL test result"
+l182	"URL"
+l183	"URL relocation"
+l185	"Format"
+l186	"Tile size"
+l187	"pixels"
+l188	"Depth"
+l189	"Type"
+
+e12	"Invalid URL syntax"
+
+l21	"XY range by"
+l22	"Tile numbers"
+l23	"Coordinate values"
+l24	"Zoom level"
+
+v22	"tile numbers"
+v23	"coordinate values"
+
+t21	"tile %s left edge at %s W"
+t22	"tile %s right edge at %s E"
+t23	"tile %s top edge at %s N"
+t24	"tile %s bottom edge at %s S"
+t25	"0 \u2264 tile number \u2264 %d in X and Y direction,\n%d * %d tiles cover whole world"
+
+l31	"Tiles folder"
+l32	"Choose tiles folder"
+l33	"Filename prefix"
+
+c31	"Abort downloading tiles at 1st failure"
+c32	"Use '%s' for image processing"
+c32t	"'%s' not available!"
+c33	"Compose tiles to image file"
+c34	"Keep tile files after composing to image file"
+c35	"Show composed image after completion"
+
+e41	"No tile server selected"
+e42	"%d tile number(s) not specified"
+e43	"Min tile number(s) > max tile number(s)"
+e44	"Tiles folder '%s' not writable"
+e45	"DEM folder missing or not valid"
+
+m51	"Process %d (%s) started"
+m52	"Process %d (%s) terminated"
+m53	"Process %d (%s) terminated by 'kill'"
+m54	"Starting %s"
+m55	"Unexpected end of %s"
+m59	"%s not started.\nTCP port '%s' not available:\n%s"
+
+m61	"Render tiles"
+m63	"Tile numbers range"
+m64	"Coordinate values range"
+m65	"longitude"
+m66	"latitude"
+m67	"%s tiles to be rendered in %s direction"
+m68	"total number of tiles"
+m69	"More than %d tiles! Continue anyway?"
+
+m70	"Download using URL pattern '%s'"
+m71	"Write tiles as PNG files to folder '%s'"
+m72	"Requested: %d tiles, received %d tiles"
+m73a	"Download cancelled"
+m73b	"Download ended abnormally, see log file '%s'"
+m74	"%s' ended abnormally: '%s'"
+m75	"Total time %s ms for %s tiles"
+m76	"Average time %s ms for 1 tile"
+m77	"for rendering and downloading"
+m78	"Compose tiles to image '%s'"
+m81	"Wrote composed image '%s'"
+m82	"Composing tiles to image file failed"
+m83	"Deleted tiles"
+m84a	"Convert image format of tiles to PNG"
+m84b	"and apply color post-processing"
+m84c	"Compose map tiles and hillshading overlay tiles"
+m85	"Time %d ms"
+
+c80	"Enable hillshading"
+c82	"Hillshading as map"
+
+l81	"DEM folder (digital elevation model)"
+l81t	"HGT files with elevation data and/or\nZIP archives containing equally named HGT file\nExample: archive N49E008.zip containing file N49E008.hgt"
+l82	"Choose DEM folder"
+l83	"Algorithm"
+l84	"Linearity"
+l85	"Scale"
+l86	"Height angle of light source"
+l87	"Gray value magnitude scaling"
+l880	"Asymmetry factor"
+l881	"Minimum slope"
+l882	"Maximum slope"
+l885	"Preprocess invalid elevation values"
+l891	"Minimum zoom level"
+l892	"Maximum zoom level"
+
+b91	"All"
+b91t	"Select all"
+b92	"Reset"
+b92t	"Reset to\ndefaults"
+
+l99	"Output console"
+c99	"Show output console"
+m99	"Output console can now be closed!"
+
+};	# Do not remove: end of translations
+	# Do not remove: end of file (Ctrl+Z)

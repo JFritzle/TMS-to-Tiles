@@ -1,0 +1,178 @@
+# Script's German localized text strings
+
+# Rules:
+# message label must exactly match message label in script
+# followed by localized text string
+
+# Documentation:
+# https://www.tcl-lang.org/man/tcl/TclCmd/msgcat.htm
+
+# ISO 639-1 code for German language: de
+set iso_639_1 "de"
+
+::msgcat::mcmset $iso_639_1 {	# Begin of translations
+
+i00	"Fehler beim Lesen der Benutzereinstellungen\nvon Datei '%s'"
+i01	"Erforderliche Benutzereinstellungen fehlen,\nDatei '%s' nicht gefunden"
+
+l01	"TMS zu Kacheln"
+
+e01	"%s '%s'\nmit Prozess-ID %d läuft bereits"
+e02	"Prozess durch 'kill' beenden\nund neu starten?"
+e03	"Betriebssytem %s nicht unterstützt"
+e04	"Befehl '%s'\ngesetzt durch Variable '%s' ist nicht ausführbar"
+e05	"Ordner/Datei '%s'\ngesetzt durch Variable '%s' existiert nicht"
+e07	"%s-Version ist '%s'.\nMindestens Version '%s' ist erforderlich!"
+e08	"%s-Version kann nicht aus der Befehlsausgabe bestimmt werden!\n\nBefehl:\n%s\nAusgabe:\n%s"
+e09	"Weder Programm 'gm' von 'GraphicsMagick'\nnoch Programm 'magick' von 'ImageMagick' gefunden!"
+e10	"Programm 'curl' nicht gefunden!"
+
+c01	"TMS-Kachelserver konfigurieren"
+c02	"Schummerungserver konfigurieren"
+c03	"Schummerung konfigurieren"
+c04	"Farbe nachbearbeiten"
+
+s06	"Farbe nachbearbeiten"
+s07	"Gammakorrektur"
+s08	"Kontrastspreizung"
+
+x01	"Server-Information"
+x02	"Version Java-Runtime"
+x03	"Version Mapsforge Server"
+x04	"Java-Archiv des Servers"
+
+x11	"Server-Konfiguration"
+x12	"Rendering-Engine"
+x13	"Netzwerk-Interface(s)"
+x15	"TCP-Port"
+x16	"Größe der TCP-Accept-Queue"
+x17	"Minimum gleichzeitiger Threads"
+x18	"Maximum gleichzeitiger Threads"
+x19	"Logging von Server-Requests"
+
+b01	"Starten"
+b02	"Beenden"
+b03	"Abbrechen"
+
+l11	"URL des Kachelservers"
+l120	"Beschreibung der URL-Komponenten"
+l121	"Hostname oder IP-Adresse"
+l122	"optionale Port-Nummer"
+l123	"optionale Pfad-Komponente(n)"
+l124	"Platzhalter für Zoom-Stufe"
+l125	"Platzhalter für Kachelnummer in X-Richtung"
+l126	"Platzhalter für Kachelnummer in Y-Richtung"
+l127	"optionale Query-Zeichenkette (z.B. API-Key)"
+l129	"Optionale Komponenten in eckigen Klammern hängen vom Server ab"
+
+l13	"Teste URL mit Kachelwerten"
+l14	"URL zum Serverarchiv hinzufügen"
+l15	"URLs aus Textdatei hinzufügen"
+l151	"Textdatei"
+l16	"Serverarchiv"
+
+l181	"Ergebnis des URL-Tests"
+l182	"URL"
+l183	"URL-Weiterleitung"
+l185	"Format"
+l186	"Kachelgröße"
+l187	"Pixel"
+l188	"Tiefe"
+l189	"Typ"
+
+e12	"Ungültige URL-Syntax"
+
+l21	"XY-Bereich über"
+l22	"Kachelnummern"
+l23	"Koordinatenwerte"
+l24	"Zoom-Stufe"
+
+v22	"Kachelnummern"
+v23	"Koordinatenwerte"
+
+t21	"Kachel %s linker Rand bei %s W"
+t22	"Kachel %s rechter Rand bei %s O"
+t23	"Kachel %s oberer Rand bei %s N"
+t24	"Kachel %s unterer Rand bei %s S"
+t25	"0 \u2264 Kachelnummer \u2264 %d in X- und Y-Richtung,\n%d * %d Kacheln überdecken die ganze Welt"
+
+l31	"Kachelordner"
+l32	"Kachelordner auswählen"
+l33	"Dateinamen-Präfix"
+
+c31	"Kachel-Download beim 1. Misserfolg abbrechen"
+c32	"Benutze '%s' zur Bildverarbeitung"
+c32t	"'%s' nicht verfügbar!"
+c33	"Kacheln zu einer Bilddatei zusammensetzen"
+c34	"Kacheldateien nach dem Zusammensetzen behalten"
+c35	"Zusammengesetztes Bild anzeigen"
+
+e41	"Kein Kachelserver ausgewählt"
+e42	"%d Kachelnummer(n) nicht angegeben"
+e43	"Min Kachelnummer(n) > max Kachelnummer(n)"
+e44	"Kachelordner '%s' nicht beschreibbar"
+e45	"DEM-Ordner fehlt oder nicht gültig"
+
+m51	"Prozess %d (%s) gestartet"
+m52	"Prozess %d (%s) beendet"
+m53	"Prozess %d (%s) durch 'kill' beendet"
+m54	"Starte %s"
+m55	"Unerwartetes Ende von %s"
+m59	"%s nicht gestartet.\nTCP-Port '%s' nicht verfügbar:\n%s"
+
+m61	"Kacheln rendern"
+m63	"Kachelnummern-Bereich"
+m64	"Koordinatenwerte-Bereich"
+m65	"Längengrad"
+m66	"Breitengrad"
+m67	"%s Kacheln in %s-Richtung zu rendern"
+m68	"Gesamtanzahl Kacheln"
+m69	"Mehr als %d Kacheln! Trotzdem fortfahren?"
+
+m70	"Download mit URL-Muster '%s'"
+m71	"Schreibe Kacheln als PNG-Dateien in Ordner '%s'"
+m72	"Angefordert: %d Kacheln, empfangen: %d Kacheln"
+m73a	"Download abgebrochen"
+m73b	"Download abnormal beendet, siehe Log-Datei '%s'"
+m74	"'%s' abnormal beendet: '%s'"
+m75	"Gesamtzeit %s ms für %s Kacheln"
+m76	"Durchschnitt %s ms für 1 Kachel"
+m77	"zum Rendern und Herunterladen"
+m78	"Setze Kacheln zu Bild '%s' zusammen"
+m81	"Zusammengesetztes Bild '%s' geschrieben"
+m82	"Zusammensetzen des Bildes fehlgeschlagen"
+m83	"Kacheldateien gelöscht"
+m84a	"Wandle Bildformat der Kacheln in PNG"
+m84b	"und wende Farbnachbearbeitung an"
+m84c	"Setze Kartenkacheln und Schummerungsoverlay-Kacheln zusammen"
+m85	"Zeit %d ms"
+
+c80	"Schummerung einschalten"
+c82	"Schummerung als Karte"
+
+l81	"DEM-Ordner (Digital Elevation Model)"
+l81t	"HGT-Dateien mit Höhendaten und/oder\nZIP-Archive mit Inhalt gleichnamige HGT-Datei\nBeispiel:\nArchiv N49E008.zip mit Inhalt Datei N49E008.hgt"
+l82	"DEM-Ordner auswählen"
+l83	"Algorithmus"
+l84	"Linearität"
+l85	"Skalierung"
+l86	"Höhenwinkel der Lichtquelle"
+l87	"Skalierung der Grauwertgröße"
+l880	"Asymmetriefaktor"
+l881	"Minimale Neigung"
+l882	"Maximale Neigung"
+l885	"Ungültige Höhenwerte vorverarbeiten"
+l891	"Minimale Zoom-Stufe"
+l892	"Maximale Zoom-Stufe"
+
+b91	"Alle"
+b91t	"Alle auswählen"
+b92	"Reset"
+b92t	"Zurücksetzen auf\nDefault-Werte"
+
+l99	"Ausgabe-Konsole"
+c99	"Ausgabe-Konsole anzeigen"
+m99	"Ausgabe-Konsole kann jetzt geschlossen werden!"
+
+};	# Do not remove: end of translations
+	# Do not remove: end of file (Ctrl+Z)
