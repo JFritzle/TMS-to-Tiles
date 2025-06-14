@@ -25,7 +25,7 @@ if {[encoding system] != "utf-8"} {
 if {![info exists tk_version]} {package require Tk}
 wm withdraw .
 
-set version "2025-04-28"
+set version "2025-06-14"
 set script [file normalize [info script]]
 set title [file tail $script]
 set cwd [pwd]
@@ -1549,7 +1549,12 @@ pack .server.config -pady {5 0}
 
 # Rendering engine
 
-set pattern marlin-*-Unsafe-OpenJDK11
+set pattern marlin-*-Unsafe-OpenJDK
+if {$java_version < 17} {
+  append pattern 11
+} else  {
+  append pattern 1\[17\]
+}
 set engines [glob -nocomplain -tails -type f \
 	-directory [file dirname $server_jar] $pattern.jar]
 lappend engines (default)

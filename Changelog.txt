@@ -1,3 +1,7 @@
+2025-06-14
+
+- Added support for Marlin-renderer for JDK17+
+
 2025-04-28
 
 - Fixed: Spaces in temporary folder path resulted in error message
