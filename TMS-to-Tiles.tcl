@@ -25,7 +25,7 @@ if {[encoding system] != "utf-8"} {
 if {![info exists tk_version]} {package require Tk}
 wm withdraw .
 
-set version "2025-08-22"
+set version "2025-08-27"
 set script [file normalize [info script]]
 set title [file tail $script]
 set cwd [pwd]
@@ -507,11 +507,18 @@ ctsend {
 
   proc write {text} {
     .txt configure -state normal
-    if {[string index $text 0] == "\r"} {
-      set text [string range $text 1 end]
-      .txt delete end-2l end-1l
-    }
-    .txt insert end $text
+    foreach item [split $text \n] {
+      if {[string index $item 0] == "\r"} {
+	set item [string range $item 1 end]
+	.txt delete end-2l end-1l
+      }
+      if {[string index $item end] == "\b"} {
+	set item [string range $item 0 end-1]
+      } else {
+	append item \n
+      }
+      .txt insert end $item
+     }
     .txt configure -state disabled
     if {[winfo ismapped .]} {.txt see end}
   }
@@ -537,10 +544,12 @@ ctsend {
 
   lassign [::tcl::chan::fifo2] fdi fdo
   thread::detach $fdo
-  fconfigure $fdi -blocking 0 -buffering line -translation lf
+  fconfigure $fdi -blocking 0 -buffering full -buffersize 131072 -translation lf
   fileevent $fdi readable "
-    while {\[gets $fdi line\] >= 0} {write \"\$line\\n\"}
-  "	
+    set text {}
+    while {\[gets $fdi line\] >= 0} {lappend text \$line}
+    write \[join \$text \\n\]
+  "
 }
 
 set fdo [ctsend "set fdo"]
@@ -796,6 +805,11 @@ pack .tmsserver_show_hide -in .l -expand 1 -fill x
 checkbutton .server_show_hide -text [mc c02] \
 	-command "show_hide_toplevel_window .server"
 pack .server_show_hide -in .l -expand 1 -fill x
+
+# Enable/disable server request logging
+
+checkbutton .log_requests -text [mc x19] -variable log.requests
+pack .log_requests -in .l -expand 1 -fill x
 
 # Show hillshading options
 
@@ -1617,11 +1631,6 @@ pack .server.maxconn -expand 1 -fill x -pady 1
 pack .server.maxconn_value -in .server.maxconn \
 	-side right -anchor e -expand 1 -padx {3 0}
 
-# Enable/disable server request logging
-
-checkbutton .server.logrequests -text [mc x19] -variable log.requests
-pack .server.logrequests -expand 1 -fill x
-
 # Reset server configuration
 
 button .server.reset -text [mc b92] -width 8 -command reset_server_values
@@ -1714,7 +1723,7 @@ grid .tmsserver.grid.test -row 1 -column 1 -sticky we
 labelframe .tmsserver.grid.z -text "{z}" -labelanchor w
 scale .tmsserver.grid.z.scale -from $min_zoom_level -to $max_zoom_level \
 	-showvalue 0 -orient horizontal -length 50 -sliderlength 20 \
-	-variable tms.z 
+	-variable tms.z
 label .tmsserver.grid.z.value -width 3 -relief sunken -textvariable tms.z
 pack .tmsserver.grid.z.scale .tmsserver.grid.z.value -side left
 pack configure .tmsserver.grid.z.scale -padx {5 0} -ipadx 5
@@ -1874,7 +1883,7 @@ proc test_server_url {} {
   set logfmt "%-17s : %s"
   set fdlog [file tempfile]
 
-  set ::curl_echo 0
+  set ::curl_echo 1
   set rc [download_with_curl]
 
   seek $fdlog 0
@@ -2090,12 +2099,9 @@ proc selection_ok {} {
 
 proc process_start {command process} {
 
-  lassign [chan pipe] fdi fdo
-  set rc [catch "exec $command >&@ $fdo &" result]
-  close $fdo
+  set rc [catch {open "| $command 2>@1" r} result]
 
   if {$rc} {
-    close $fdi
     error_message $result return
     after 0 {set action 0}
     return
@@ -2104,22 +2110,20 @@ proc process_start {command process} {
   namespace eval $process {}
   namespace upvar $process fd fd pid pid exe exe
   set ${process}::command $command
-  set ${process}::cr ""
 
-  set fd $fdi
-  fconfigure $fd -blocking 0 -buffering line
+  set fd $result
+  set pid [pid $fd]
+  fconfigure $fd -blocking 0 -buffering full -buffersize 131072
 
-  set pid $result
   set exe [file tail [lindex $command 0]]
   set mark "\[[string toupper $process]\]"
   cputi "[mc m51 $pid $exe] $mark"
 
-  set cr "\$${process}::cr"
   unset -nocomplain ::$process.eof
   fileevent $fd readable "
-    while {\[gets $fd line\] >= 0} {
-      cputs \"$cr\\$mark \$line\"
-    }
+    set text {}
+    while {\[gets $fd line\] >= 0} {lappend text \"\\$mark \$line\"}
+    if {\[llength \$text\]} {cputs \[join \$text \\n\]}
     if {\[eof $fd\]} {
       cputi \"\[mc m52 $pid $exe\] \\$mark\"
       namespace delete $process
@@ -2267,7 +2271,7 @@ proc srv_start {} {
   puts $fd $data
   close $fd
 
-  set text "Mapsforge Server \[SRV]\]"
+  set text "Mapsforge Server \[SRV\]"
   # Server not yet running: TCP port is currently in use?
   set count 0
   while {$count < 5} {
@@ -2305,8 +2309,6 @@ proc srv_start {} {
 
   if {![process_running srv]} {error_message [mc m55 $text] return; return}
   set srv::port $port
-  set srv::cr \r
-  if {${::log.requests}} {cputs \r}
 
 }
 
@@ -2337,17 +2339,14 @@ proc pipe_run {exe args} {
   if {$rc} {return [list $rc $result]}
 
   set fd $result
-  fconfigure $fd -blocking 0 -buffering line
+  fconfigure $fd -blocking 0 -buffering full -buffersize 131072
   namespace eval pipe {}
   set pipe::pid [pid $fd]
   set pipe::exe $exe
   fileevent $fd readable "
-    while {\[gets $fd line\] >= 0} {
-      cputs \"\\r> $exe \$line\"
-    }
-    if {\[eof $fd\]} {
-      set pipe::rc \[catch {close $fd} pipe::result]
-    }"
+    while {\[gets $fd line\] >= 0} {cputs \"\\r> $exe \$line\"}
+    if {\[eof $fd\]} {set pipe::rc \[catch {close $fd} pipe::result]}
+    "
   if {![info exists pipe::rc]} {vwait pipe::rc}
   set return [list $pipe::rc $pipe::result]
   namespace delete pipe
@@ -2397,7 +2396,7 @@ proc download_with_curl {} {uplevel 1 {
   set count 0
   set valid 0
 
-# cputs "\r[get_shell_command $curl_exec]\n"
+# cputs [get_shell_command $curl_exec]
   set rc [catch {open "| $curl_exec" r} result]
   if {$rc} {
     error_message "Download $url:\n$result" return
@@ -2408,12 +2407,15 @@ proc download_with_curl {} {uplevel 1 {
   }
 
   set fd $result
-  fconfigure $fd -blocking 0 -buffering line
+  fconfigure $fd -blocking 0 -buffering full -buffersize 131072
   namespace eval pipe {}
   set pipe::pid [pid $fd]
   set pipe::exe [file tail $::curl]
+  cputi [mc m51 $pipe::pid $pipe::exe]
+
   lassign {-1 unknown} ::curl_rc ::curl_result
   fileevent $fd readable "
+    set text {}
     while {\[gets $fd line\] >= 0} {
       if {\[info exists pipe::abort\]} continue
       if {\[string range \$line 0 1\] != {! }} {
@@ -2422,15 +2424,17 @@ proc download_with_curl {} {uplevel 1 {
 	lmap {name value} \[string range \$line 2 end\] {set \$name \$value}
 	if {!$::curl_echo} continue
 	if {\$curl_rc} {
-	  cputs \"\\r> curl error \$curl_rc: \$curl_result\"
+	  lappend text \"> error \$curl_rc: \$curl_result\"
 	  set pipe::abort 1
 	} else {
-	  cputs \"\\r> GET \$curl_url -> HTTP status \$curl_status, \$curl_size bytes data\"
+	  if {${::log.requests}} {lappend text \
+	     \"> GET \$curl_url -> HTTP status \$curl_status, \$curl_size bytes data\"}
 	  if {\$curl_status == 200 || \$curl_status == 404} continue
 	  if {${::tiles.abort}} {set pipe::abort 1; after 0 pipe_kill}
 	}
       }
     }
+    if {\$text != {}} {cputs \[join \$text \\n\]}
     if {\[eof $fd\]} {
       set pipe::result \$curl_result
       set pipe::rc \$curl_rc
@@ -2438,6 +2442,7 @@ proc download_with_curl {} {uplevel 1 {
     }"
   if {![info exists pipe::rc]} {vwait pipe::rc}
   lassign [list $pipe::rc $pipe::result] rc result
+  cputi [mc m52 $pipe::pid $pipe::exe]
   namespace delete pipe
 
   if {$rc || $::cancel} {return 1}
@@ -2564,17 +2569,11 @@ proc run_render_job {} {
 
     # Download with "curl"
 
-    set start [clock milliseconds]
     set ::curl_echo [expr {$task == "Map"}]
+    set start [clock milliseconds]
     set rc [download_with_curl]
     set stop [clock milliseconds]
-
-    # Stop server
-
-    if {$task == "Hillshading"} {
-      cputs ""
-      srv_stop
-    }
+    if {$task == "Hillshading"} {srv_stop}
 
     if {$::cancel} break
 
@@ -2585,8 +2584,8 @@ proc run_render_job {} {
     # Measure time(s)
 
     set time [expr $stop-$start]
-    cputs "\n[mc m75 $time $valid]"
-    if {$valid} {cputs "[mc m76 [format "%.1f" [expr $time/(1.*$valid)]]]"}
+    cputs [mc m75 $time $valid]
+    if {$valid} {cputs [mc m76 [format "%.1f" [expr $time/(1.*$valid)]]]}
     cputs "... [mc m77]\n"
 
     if {$valid == 0} {set rc 1}
@@ -2971,7 +2970,7 @@ foreach item {global shading tmsserver tiles} {save_${item}_settings}
 
 if {[ctsend "winfo ismapped ."]} {
   ctsend "
-    write \"\n[mc m99]\"
+    write \"\n[mc m99]\b\"
     wm protocol . WM_DELETE_WINDOW {}
     bind . <ButtonRelease-3> {destroy .}
     tkwait window .
