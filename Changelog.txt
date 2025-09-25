@@ -1,3 +1,7 @@
+2025-09-25
+
+- Improved moving focus by mouse button 1 click away from text input fields
+
 2025-08-27
 
 - Speed up console output
