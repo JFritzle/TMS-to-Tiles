@@ -1,3 +1,9 @@
+2025-10-06
+
+- Fixed: script aborted due to typo
+- Workaround running script by "Open with" on Windows
+- Minor script optimizations
+
 2025-09-25
 
 - Improved moving focus by mouse button 1 click away from text input fields

@@ -25,9 +25,12 @@ if {[encoding system] != "utf-8"} {
 if {![info exists tk_version]} {package require Tk}
 wm withdraw .
 
-set version "2025-09-25"
+set version "2025-10-06"
 set script [file normalize [info script]]
 set title [file tail $script]
+
+# Workaround running script by "Open with" on Windows
+if {[pwd] == "C:/Windows/System32"} {cd [file dirname $script]}
 set cwd [pwd]
 
 # Required packages
@@ -843,14 +846,14 @@ pack .r -anchor nw
 
 labelframe .xyrange -labelanchor w -text [mc l21]:
 pack .xyrange -in .r -expand 1 -fill x -pady 1
-combobox .xyrange_values -width 18 -values [list [mc v22] [mc v23]] \
+combobox .xyrange.values -width 18 -values [list [mc v22] [mc v23]] \
 	-validate key -validatecommand {return 0}
-if {[info exists xyrange.mode]} {.xyrange_values current ${::xyrange.mode}}
-if {[.xyrange_values current] < 0} {.xyrange_values current 0}
-pack .xyrange_values -in .xyrange -side right -anchor e -expand 1
+if {[info exists xyrange.mode]} {.xyrange.values current ${::xyrange.mode}}
+if {[.xyrange.values current] < 0} {.xyrange.values current 0}
+pack .xyrange.values -side right -anchor e -expand 1
 
 proc switch_xyrange {} {
-  set range [.xyrange_values current]
+  set range [.xyrange.values current]
   if {$range == 0} {
     set w tiles
     set r coord
@@ -902,12 +905,12 @@ foreach item {tiles coord} {
 
 labelframe .zoom -labelanchor w -text [mc l24]:
 pack .zoom -in .r -fill x -expand 1 -pady 1
-scale .zoom_scale -from $min_zoom_level -to $max_zoom_level -resolution 1 \
+scale .zoom.scale -from $min_zoom_level -to $max_zoom_level -resolution 1 \
 	-orient horizontal -variable zoom.level -command scale_zoom
-label .zoom_value -anchor center -textvariable zoom.level -width 4 \
+label .zoom.value -anchor center -textvariable zoom.level -width 4 \
 	-relief sunken
-pack .zoom_value -in .zoom -side right
-pack .zoom_scale -in .zoom -side left -fill x -expand 1
+pack .zoom.value -side right
+pack .zoom.scale -side left -fill x -expand 1
 
 proc scale_zoom {zoom} {
   set tmax [expr (1<<$zoom)-1]
@@ -929,7 +932,7 @@ proc scale_zoom {zoom} {
     eval tooltip $widget.ymaxe "\$${item}_ymax"
   }
   set count [expr $tmax+1]
-  tooltip .zoom_scale [mc t25 $tmax $count $count]
+  tooltip .zoom.scale [mc t25 $tmax $count $count]
 
   # Shrink tiles range to valid range
   while {1} {
@@ -942,7 +945,7 @@ proc scale_zoom {zoom} {
   }
 
   # Recalculate tile numbers or coordinate values
-  if {[.xyrange_values current] == 0} {
+  if {[.xyrange.values current] == 0} {
     set type tiles
   } else {
     set type coord
@@ -954,7 +957,7 @@ proc scale_zoom {zoom} {
   }
 }
 
-bind .xyrange_values <<ComboboxSelected>> switch_xyrange
+bind .xyrange.values <<ComboboxSelected>> switch_xyrange
 switch_xyrange
 
 # Validate tile numbers
@@ -1050,21 +1053,21 @@ scale_zoom ${zoom.level}
 
 labelframe .tms_url -labelanchor nw -text [mc l11]:
 pack .tms_url -in .r -fill x -expand 1 -pady 1
-entry .tms_url_value -textvariable tms.url \
+entry .tms_url.value -textvariable tms.url \
 	-state readonly -takefocus 0 -highlightthickness 0
-pack .tms_url_value -in .tms_url -side left -fill x -expand 1
+pack .tms_url.value -side left -fill x -expand 1
 
 # Choose folder for tiles and composed image
 
 if {![file isdirectory ${tiles.folder}]} {set tiles.folder $cwd}
 labelframe .tiles_folder -labelanchor nw -text [mc l31]:
 pack .tiles_folder -in .r -fill x -expand 1 -pady 1
-entry .tiles_folder_value -textvariable tiles.folder \
+entry .tiles_folder.value -textvariable tiles.folder \
 	-state readonly -takefocus 0 -highlightthickness 0
-button .tiles_folder_button -style Arrow.TButton \
+button .tiles_folder.button -style Arrow.TButton \
 	-image ArrowDown -command choose_tiles_folder
-pack .tiles_folder_button -in .tiles_folder -side right -fill y
-pack .tiles_folder_value -in .tiles_folder -side left -fill x -expand 1
+pack .tiles_folder.button -side right -fill y
+pack .tiles_folder.value -side left -fill x -expand 1
 
 proc choose_tiles_folder {} {
   set folder [tk_chooseDirectory -parent . -initialdir ${::tiles.folder} \
@@ -1079,10 +1082,10 @@ proc choose_tiles_folder {} {
 
 labelframe .tiles_prefix -labelanchor w -text [mc l33]:
 pack .tiles_prefix -in .r -expand 1 -fill x -pady {2 1}
-entry .tiles_prefix_value -textvariable tiles.prefix -width 25 -justify left
-pack .tiles_prefix_value -in .tiles_prefix -side right
+entry .tiles_prefix.value -textvariable tiles.prefix -width 25 -justify left
+pack .tiles_prefix.value -side right
 
-.tiles_prefix_value configure -validate key -vcmd {
+.tiles_prefix.value configure -validate key -vcmd {
   if {%d < 1} {return 1}
   return [regexp {^(\w+[-.]?)*$} %P]
 }
@@ -1306,15 +1309,13 @@ if {![file isdirectory ${dem.folder}]} {set dem.folder ""}
 labelframe .shading.dem_folder -labelanchor nw -text [mc l81]:
 tooltip .shading.dem_folder [mc l81t]
 pack .shading.dem_folder -fill x -expand 1 -pady 1
-entry .shading.dem_folder_value -textvariable dem.folder \
+entry .shading.dem_folder.value -textvariable dem.folder \
 	-state readonly -takefocus 0 -highlightthickness 0
-tooltip .shading.dem_folder_value [mc l81t]
-button .shading.dem_folder_button -style Arrow.TButton \
+tooltip .shading.dem_folder.value [mc l81t]
+button .shading.dem_folder.button -style Arrow.TButton \
 	-image ArrowDown -command choose_dem_folder
-pack .shading.dem_folder_button -in .shading.dem_folder \
-	-side right -fill y
-pack .shading.dem_folder_value -in .shading.dem_folder \
-	-side left -fill x -expand 1
+pack .shading.dem_folder.button -side right -fill y
+pack .shading.dem_folder.value -side left -fill x -expand 1
 
 proc choose_dem_folder {} {
   set folder [tk_chooseDirectory -parent . -initialdir ${::dem.folder} \
@@ -1334,8 +1335,7 @@ combobox .shading.algorithm.values -width 12 \
 	-textvariable shading.algorithm -values $list
 if {[.shading.algorithm.values current] < 0} \
 	{.shading.algorithm.values current 0}
-pack .shading.algorithm.values -in .shading.algorithm \
-	-side right -anchor e -expand 1
+pack .shading.algorithm.values -side right -anchor e -expand 1
 
 # Hillshading algorithm parameters
 
@@ -1350,15 +1350,14 @@ entry .shading.simple.value2 -textvariable shading.simple.scale \
 set .shading.simple.value2.minmax {0 10 0.666}
 tooltip .shading.simple.value2 "0 ≤ [mc l85] ≤ 10"
 pack .shading.simple.value1 .shading.simple.label2 .shading.simple.value2 \
-	-in .shading.simple -side left -anchor w -expand 1 -fill x -padx {5 0}
+	-side left -anchor w -expand 1 -fill x -padx {5 0}
 
 labelframe .shading.diffuselight -labelanchor w -text [mc l86]:
 entry .shading.diffuselight.value -textvariable shading.diffuselight.angle \
 	-width 8 -justify right
 set .shading.diffuselight.value.minmax {0 90 50.}
 tooltip .shading.diffuselight.value "0° ≤ [mc l86] ≤ 90°"
-pack .shading.diffuselight.value -in .shading.diffuselight \
-	-side right -anchor e -expand 1
+pack .shading.diffuselight.value -side right -anchor e -expand 1
 
 frame .shading.asy
 foreach i {0 1 2} {
@@ -1387,7 +1386,7 @@ entry .shading.magnitude.value -textvariable shading.magnitude \
 	-width 8 -justify right
 set .shading.magnitude.value.minmax {0 4 1.}
 tooltip .shading.magnitude.value "0 ≤ [mc l87] ≤ 4"
-pack .shading.magnitude.value -in .shading.magnitude -anchor e -expand 1
+pack .shading.magnitude.value -anchor e -expand 1
 
 # Theme's hillshading zoom
 
@@ -1540,25 +1539,23 @@ pack .server.info
 
 labelframe .server.jre_version -labelanchor w -text [mc x02]:
 pack .server.jre_version -expand 1 -fill x -pady 1
-label .server.jre_version_value -anchor e -textvariable java_string
-pack .server.jre_version_value -in .server.jre_version \
-	-side right -anchor e -expand 1
+label .server.jre_version.value -anchor e -textvariable java_string
+pack .server.jre_version.value -side right -anchor e -expand 1
 
 # Mapsforge server version
 
 labelframe .server.version -labelanchor w -text [mc x03]:
 pack .server.version -expand 1 -fill x -pady 1
-label .server.version_value -anchor e -textvariable server_string
-pack .server.version_value -in .server.version \
-	-side right -anchor e -expand 1
+label .server.version.value -anchor e -textvariable server_string
+pack .server.version.value -side right -anchor e -expand 1
 
 # Mapsforge server version jar archive
 
 labelframe .server.jar -labelanchor nw -text [mc x04]:
 pack .server.jar -expand 1 -fill x -pady 1
-entry .server.jar_value -textvariable server_jar \
+entry .server.jar.value -textvariable server_jar \
 	-state readonly -takefocus 0 -highlightthickness 0
-pack .server.jar_value -in .server.jar -expand 1 -fill x
+pack .server.jar.value -expand 1 -fill x
 
 # Server configuration
 
@@ -1584,49 +1581,45 @@ foreach item $engines \
 set width [expr $width/[font measure TkTextFont "0"]+1]
 
 labelframe .server.engine -labelanchor nw -text [mc x12]:
-combobox .server.engine_values -width $width \
+combobox .server.engine.values -width $width \
 	-validate key -validatecommand {return 0} \
 	-textvariable rendering.engine -values $engines
-if {[.server.engine_values current] < 0} \
-	{.server.engine_values current 0}
+if {[.server.engine.values current] < 0} \
+	{.server.engine.values current 0}
 if {[llength $engines] > 1} {
   pack .server.engine -expand 1 -fill x -pady 1
-  pack .server.engine_values -in .server.engine \
-	-anchor e -expand 1 -fill x
+  pack .server.engine.values -anchor e -expand 1 -fill x
 }
 
 # Server interface
 
 labelframe .server.interface -labelanchor w -text [mc x13]:
-combobox .server.interface_values -width 10 \
+combobox .server.interface.values -width 10 \
 	-textvariable tcp.interface -values {localhost all}
-if {[.server.interface_values current] < 0} \
-	{.server.interface_values current 0}
+if {[.server.interface.values current] < 0} \
+	{.server.interface.values current 0}
 pack .server.interface -expand 1 -fill x -pady {6 2}
-pack .server.interface_values -in .server.interface \
-	-side right -anchor e -expand 1 -padx {3 0}
+pack .server.interface.values -side right -anchor e -expand 1 -padx {3 0}
 
 # Server TCP port number
 
 labelframe .server.port -labelanchor w -text [mc x15]:
-entry .server.port_value -textvariable tcp.port \
+entry .server.port.value -textvariable tcp.port \
 	-width 6 -justify center
-set .server.port_value.minmax "1024 65535 $tcp_port"
-tooltip .server.port_value "1024 ≤ [mc x15] ≤ 65535"
+set .server.port.value.minmax "1024 65535 $tcp_port"
+tooltip .server.port.value "1024 ≤ [mc x15] ≤ 65535"
 pack .server.port -expand 1 -fill x -pady 1
-pack .server.port_value -in .server.port \
-	-side right -anchor e -expand 1 -padx {3 0}
+pack .server.port.value -side right -anchor e -expand 1 -padx {3 0}
 
 # Maximum size of TCP listening queue
 
 labelframe .server.maxconn -labelanchor w -text [mc x16]:
-entry .server.maxconn_value -textvariable tcp.maxconn \
+entry .server.maxconn.value -textvariable tcp.maxconn \
 	-width 6 -justify center
-set .server.maxconn_value.minmax {0 {} 1024}
-tooltip .server.maxconn_value "[mc x16] ≥ 0"
+set .server.maxconn.value.minmax {0 {} 1024}
+tooltip .server.maxconn.value "[mc x16] ≥ 0"
 pack .server.maxconn -expand 1 -fill x -pady 1
-pack .server.maxconn_value -in .server.maxconn \
-	-side right -anchor e -expand 1 -padx {3 0}
+pack .server.maxconn.value -side right -anchor e -expand 1 -padx {3 0}
 
 # Reset server configuration
 
@@ -1635,13 +1628,13 @@ tooltip .server.reset [mc b92t]
 pack .server.reset -pady {5 0}
 
 proc reset_server_values {} {
-  foreach widget {.server.port_value .server.maxconn_value} \
+  foreach widget {.server.port.value .server.maxconn.value} \
 	{set ::[$widget cget -textvariable] [lindex [set ::$widget.minmax] 2]}
-  .server.engine_values current 0
-  .server.interface_values set $::interface
+  .server.engine.values current 0
+  .server.interface.values set $::interface
 }
 
-foreach widget {.server.port_value .server.maxconn_value} {
+foreach widget {.server.port.value .server.maxconn.value} {
   $widget configure -validate all -vcmd {validate_number %W %V %P " " int}
   bind $widget <Shift-ButtonRelease-1> \
 	{set [%W cget -textvariable] [lindex ${::%W.minmax} 2]}
@@ -1654,8 +1647,8 @@ foreach widget {.server.port_value .server.maxconn_value} {
 
 labelframe .tmsserver.url -labelanchor nw -text [mc l11]:
 pack .tmsserver.url -fill x -expand 1 -pady 1
-entry .tmsserver.url_value -textvariable tms.url -width 0
-pack .tmsserver.url_value -in .tmsserver.url -fill x -expand 1
+entry .tmsserver.url.value -textvariable tms.url -width 0
+pack .tmsserver.url.value -fill x -expand 1
 
 # Example URL
 
@@ -1767,9 +1760,9 @@ proc add_server_url {} {
     return
   }
   lappend ::tms.list $url
-  .tmsserver.list_values selection set end
-  .tmsserver.list_values see end
-  .tmsserver.list_values configure \
+  .tmsserver.list.values selection set end
+  .tmsserver.list.values see end
+  .tmsserver.list.values configure \
 	-height [expr min([llength ${::tms.list}],12)]
 }
 
@@ -1797,10 +1790,10 @@ proc merge_server_file {} {
     if {[catch {::uri::split $url}]} continue
     if {[lsearch -exact ${::tms.list} $url] != -1} continue
     lappend ::tms.list $url
-    .tmsserver.list_values see end
+    .tmsserver.list.values see end
   }
   close $fd
-  .tmsserver.list_values configure \
+  .tmsserver.list.values configure \
 	-height [expr min([llength ${::tms.list}],12)]
   resize_toplevel_window .tmsserver
 }
@@ -1819,18 +1812,18 @@ proc set_server_file {} {
 
 labelframe .tmsserver.list -labelanchor nw -text [mc l16]:
 pack .tmsserver.list -expand 1 -fill x -pady 1
-scrollbar .tmsserver.list_scroll -command ".tmsserver.list_values yview"
-listbox .tmsserver.list_values -selectmode single -activestyle none \
+scrollbar .tmsserver.list.scroll -command ".tmsserver.list.values yview"
+listbox .tmsserver.list.values -selectmode single -activestyle none \
 	-takefocus 1 -exportselection 0 -listvariable tms.list \
 	-width 0 -height [expr min([llength ${tms.list}],12)] \
-	-yscrollcommand ".tmsserver.list_scroll set"
-pack .tmsserver.list_scroll -in .tmsserver.list -side right -fill y
-pack .tmsserver.list_values -in .tmsserver.list -side left -expand 1 -fill both
+	-yscrollcommand ".tmsserver.list.scroll set"
+pack .tmsserver.list.scroll -side right -fill y
+pack .tmsserver.list.values -side left -expand 1 -fill both
 
-bind .tmsserver.list_values <ButtonRelease-1> {
+bind .tmsserver.list.values <ButtonRelease-1> {
   set tms.url [lindex ${tms.list} [%W curselection]]
 }
-bind .tmsserver.list_values <Delete> {
+bind .tmsserver.list.values <Delete> {
   %W delete [%W curselection]
 }
 
@@ -1985,7 +1978,7 @@ proc save_tmsserver_settings {} {
 # Save tiles settings to folder ini_folder
 
 proc save_tiles_settings {} {
-  set ::xyrange.mode [.xyrange_values current]
+  set ::xyrange.mode [.xyrange.values current]
   save_settings $::ini_folder/tiles.ini \
 	tiles.folder tiles.prefix xyrange.mode zoom.level \
 	tiles.xmin tiles.xmax tiles.ymin tiles.ymax \
@@ -2052,8 +2045,8 @@ proc incr_font_size {incr} {
   }
   update idletasks
 
-  foreach item {.xyrange_values .shading.algorithm.values \
-	.server.engine_values .server.interface_values} \
+  foreach item {.xyrange.values .shading.algorithm.values \
+	.server.engine.values .server.interface.values} \
 	{if {[winfo exists $item]} {$item configure -justify left}}
   foreach item {.effects.gamma_scale .effects.contrast_scale \
 	.zoom_scale .tmsserver.grid.z.scale} \
@@ -2662,10 +2655,10 @@ proc run_render_job {} {
 	file rename -force $tile.img $tile.png
 	cputs "\r> rename $tile.img $tile.png"
       } elseif {$use_magick == "gm"} {
-	cputs $fd "convert $tile.img $level $tile.png"
+	puts $fd "convert $tile.img $level $tile.png"
 	lappend clean $tile.img
       } elseif {$use_magick == "magick"} {
-	cputs $fd "$tile.img $level -identify -write $tile.png +delete"
+	puts $fd "$tile.img $level -identify -write $tile.png +delete"
 	lappend clean $tile.img
       }
     }
