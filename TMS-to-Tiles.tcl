@@ -25,7 +25,7 @@ if {[encoding system] != "utf-8"} {
 if {![info exists tk_version]} {package require Tk}
 wm withdraw .
 
-set version "2025-10-06"
+set version "2025-10-14"
 set script [file normalize [info script]]
 set title [file tail $script]
 
@@ -317,21 +317,14 @@ cd $cwd
 # Check operating system
 
 if {$tcl_platform(os) == "Windows NT"} {
-  if {$language == ""} {
-    package require registry
-    set language [registry get \
-	{HKEY_CURRENT_USER\Control Panel\International} {LocaleName}]
-    set language [regsub {(.*)-(.*)} $language {\1}]
-  }
+  package require registry
   if {![info exists env(TMP)]} {set env(TMP) $env(HOME)]}
+  append env(TMP) \\[format "TMS%8.8x" [pid]]
   set tmpdir [file normalize $env(TMP)]
   set nprocs $env(NUMBER_OF_PROCESSORS)
 } elseif {$tcl_platform(os) == "Linux"} {
-  if {$language == ""} {
-    set language [regsub {(.*)_(.*)} $env(LANG) {\1}]
-    if {$env(LANG) == "C"} {set language en}
-  }
   if {![info exists env(TMPDIR)]} {set env(TMPDIR) /tmp}
+  append env(TMPDIR) /[format "TMS%8.8x" [pid]]
   set tmpdir $env(TMPDIR)
   set nprocs [exec /usr/bin/nproc]
 } else {
@@ -846,7 +839,7 @@ pack .r -anchor nw
 
 labelframe .xyrange -labelanchor w -text [mc l21]:
 pack .xyrange -in .r -expand 1 -fill x -pady 1
-combobox .xyrange.values -width 18 -values [list [mc v22] [mc v23]] \
+combobox .xyrange.values -width 24 -values [list [mc v22] [mc v23]] \
 	-validate key -validatecommand {return 0}
 if {[info exists xyrange.mode]} {.xyrange.values current ${::xyrange.mode}}
 if {[.xyrange.values current] < 0} {.xyrange.values current 0}
@@ -1397,14 +1390,14 @@ checkbutton .shading.zoom.min_apply -text [mc l891]: \
 entry .shading.zoom.min_value -textvariable shading.zoom.min.value \
 	-width 8 -justify right
 set .shading.zoom.min_value.minmax {0 25 9}
-tooltip .shading.zoom.min_value "0 ≤ [mc l891] ≤ 25"
+tooltip .shading.zoom.min_value "0 ≤ [mc l891] ≤ [mc l892]"
 checkbutton .shading.zoom.max_apply -text [mc l892]: \
 	-variable shading.zoom.max.apply \
 	-onvalue true -offvalue false -command update_shading_zoom_levels
 entry .shading.zoom.max_value -textvariable shading.zoom.max.value \
 	-width 8 -justify right
 set .shading.zoom.max_value.minmax {0 25 17}
-tooltip .shading.zoom.max_value "0 ≤ [mc l892] ≤ 25"
+tooltip .shading.zoom.max_value "[mc l891] ≤ [mc l892] ≤ 25"
 
 set row 0
 foreach item {min max} {
@@ -1652,8 +1645,8 @@ pack .tmsserver.url.value -fill x -expand 1
 
 # Example URL
 
-label .tmsserver.xmpl -anchor w -text \
-  {Example URL: http[s]://host[:port][/path]/{z}/{x}/{y}.png[?query]}
+label .tmsserver.xmpl -anchor w -text [string cat [mc l12] ": "\
+  {http[s]://host[:port][/path]/{z}/{x}/{y}.png[?query]}]
 pack .tmsserver.xmpl -anchor w -pady 1 -fill x
 
 # Tooltip for example URL
@@ -1871,6 +1864,7 @@ proc test_server_url {} {
 
   set logsep ""
   set logfmt "%-17s : %s"
+  file mkdir $::tmpdir
   set fdlog [file tempfile]
 
   set ::curl_echo 1
@@ -2809,7 +2803,7 @@ proc run_render_job {} {
   }
   close $fd
 
-  set args "montage -mode concatenate -tile ${xcount}x${ycount} @$batch_file $composed.png"
+  set args "montage -mode concatenate -tile ${xcount}x${ycount} {@$batch_file} $composed.png"
   cputs "> [file tail $exe] $args"
   set fderr [file tempfile]
   lassign [pipe_run $exe {*}$args 2>@ $fderr] rc result
@@ -2898,6 +2892,7 @@ while {1} {
   vwait action
   if {$action == 0} {
     foreach item {global shading tmsserver tiles} {save_${item}_settings}
+    catch {file delete -force $tmpdir}
     exit
   }
   unset action
@@ -2906,7 +2901,6 @@ while {1} {
 
 # Create server's temporary files folder
 
-append tmpdir /[format "TMS%8.8x" [pid]]
 file mkdir $tmpdir/tasks
 
 # Create server logging properties
