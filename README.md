@@ -4,10 +4,6 @@ Graphical user interface to download tiles from TMS tile servers
 ### About
 Tiles are optionally composed to an image without installed map application. A limited number of color-postprossing may be applied to tiles. In addition, tiles can be overlayed with an alpha-transparent hillshading supplied by a local tile server. The corresponding tile server is available at this [mapsforgesrv](https://github.com/telemaxx/mapsforgesrv) repository.  
 
-While old *single task* server type was capable of rendering only one single set of parameters at a time, the new *multiple tasks* server type is capable of rendering multiple sets of parameters concurrently. Thus, one single *multiple tasks* server instance can replace multiple *single task* server instances.  
-**This Graphical user interface only supports the *multiple tasks* server type.**  
-Latest GUI supporting *single task* server type is still available in GitHub's [*legacy*](https://github.com/JFritzle/TMS-to-Tiles/tree/legacy) branch.
-
 An amount of tile servers allow downloading tiles via TMS protocol. A non-exhaustive list can be found at https://wiki.openstreetmap.org/wiki/Tile_servers.
  
 ### Graphical user interface
@@ -37,9 +33,7 @@ Open [mapsforgesrv releases](https://github.com/telemaxx/mapsforgesrv/releases).
 Download most recently released jar file _mapsforgesrv-fatjar.jar_ from _<release\>\_for\_java11_tasks_ assets.  
 Windows: Copy downloaded jar file into Mapsforge tile server’s installation folder, e.g. into folder _%programfiles%/MapsforgeSrv_.  
 Linux: Copy downloaded jar file into Mapsforge tile server’s installation folder, e.g. into folder _~/MapsforgeSrv_.  
-Note:  
-New *multiple tasks* server type and server version 0.21.0.0 or higher is required.  
-Old *single task* server type and previous server versions are no longer supported.  
+Note: Server version 0.22.0.0 or higher is required.  
 
 3. Alternative Marlin rendering engine (optional, recommended)  
 [Marlin](https://github.com/bourgesl/marlin-renderer) is an open source Java2D rendering engine optimized for performance, replacing the standard built into Java. Download is available at [Marlin-renderer releases](https://github.com/bourgesl/marlin-renderer/releases).  
