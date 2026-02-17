@@ -25,7 +25,7 @@ if {[encoding system] != "utf-8"} {
 package require Tk
 wm withdraw .
 
-set version "2026-02-02"
+set version "2026-02-17"
 set script [file normalize [info script]]
 set title [file tail $script]
 
@@ -1838,7 +1838,7 @@ proc test_server_url {} {
   set fdlog [file tempfile]
 
   set ::curl_echo 1
-  set rc [download_with_curl]
+  set rc [curl_download]
 
   seek $fdlog 0
   set log [split [read -nonewline $fdlog] \n]
@@ -2088,20 +2088,23 @@ proc process_start {command process} {
     set mark \[[string toupper $process]\]
     cputi "$m51 $mark"
 
-    fconfigure $fd -blocking 0 -buffering full -buffersize 131072
-    fileevent $fd readable "
+   proc fevent {} {uplevel #0 {
       set text {}
-      while {\[gets $fd line\] >= 0} {lappend text \"\\$mark \$line\"}
-      if {\$text != {}} {cputs \[join \$text \\n\]}
-      if {\[eof $fd\]} {
-	cputi \"$m52 \\$mark\"
-	thread::send -async $sid \"
-	  namespace delete $process
-	  set $process.eof 1
-	  \"
-	thread::release
-	close $fd
-      }"
+      while {[gets $fd line] >= 0} {lappend text "$mark $line"}
+      if {$text != {}} {cputs [join $text \n]}
+      if {![eof $fd]} return
+      fileevent $fd readable {}
+      cputi "$m52 $mark"
+      thread::send -async $sid "
+	namespace delete $process
+	set $process.eof 1
+	"
+      close $fd
+      thread::release
+    }}
+
+    fconfigure $fd -blocking 0 -buffering full -buffersize 131072
+    fileevent $fd readable fevent
   }
 }
 
@@ -2112,9 +2115,7 @@ proc process_kill {process} {
   if {![process_running $process]} return
   namespace upvar $process tid tid pid pid
 
-  thread::send $tid {
-    fileevent $fd readable [regsub {m52} [fileevent $fd readable] {m53}]
-  }
+  thread::send $tid {proc fevent {} [regsub m52 [info body fevent] m53]}
 
   if {$::tcl_platform(os) == "Windows NT"} {
     catch {exec TASKKILL /F /PID $pid /T}
@@ -2193,7 +2194,10 @@ proc srv_start {} {
 
   set data terminate=true\n
   append data requestlog-format=
-  if {${::log.requests}} {append data "From %{client}a Get %U%q Status %s Size %O bytes Time %{ms}T ms"}
+  if {${::log.requests}} {
+    append data "From %{remote}a:%{local}p Get %U%q "
+    append data "Status %s Size %O bytes Time %{ms}T ms"
+  }
   append data \n
   if {${::tcp.interface} == "localhost"} {append data host=localhost\n}
   set port [set ::tcp.port]
@@ -2315,10 +2319,11 @@ proc pipe_run {exe args} {
   namespace eval pipe {}
   set pipe::pid [pid $fd]
   set pipe::exe $exe
-  fileevent $fd readable "
-    while {\[gets $fd line\] >= 0} {cputs \"\\r> $exe \$line\"}
-    if {\[eof $fd\]} {set pipe::rc \[catch {close $fd} pipe::result]}
-    "
+  proc pipe_event {fd} {
+    while {[gets $fd line] >= 0} {cputs "\r> $pipe::exe $line"}
+    if {[eof $fd]} {set pipe::rc [catch {close $fd} pipe::result]}
+  }
+  fileevent $fd readable [list pipe_event $fd]
   if {![info exists pipe::rc]} {vwait pipe::rc}
   set return [list $pipe::rc $pipe::result]
   namespace delete pipe
@@ -2342,7 +2347,37 @@ proc pipe_kill {} {
 
 # Download tiles with "curl"
 
-proc download_with_curl {} {uplevel 1 {
+proc curl_event {fd fdlog} {
+  set text {}
+  while {[gets $fd line] >= 0} {
+    if {[info exists pipe::abort]} continue
+    if {[string range $line 0 1] != {! }} {
+      puts $fdlog [string trimright $line \r]
+    } else {
+      lmap {name value} [string range $line 2 end] {set $name $value}
+      lmap name {rc result} {set pipe::$name [set $name]}
+      if {!$::curl_echo} continue
+      if {$rc} {
+	lappend text "> error $rc: $result"
+	set pipe::abort 1
+      } else {
+	if {${::log.requests}} {
+	  set time [expr round(1000*$time)]
+	  lappend text \
+	    "> Get $url Status $status Size $size bytes Time $time ms"
+	 }
+	if {$status == 200 || $status == 404} continue
+	if {${::tiles.abort}} {set pipe::abort 1; after 0 pipe_kill}
+      }
+    }
+  }
+  if {$text != {}} {cputs [join $text \n]}
+  if {![eof $fd]} return
+  set pipe::eof 1
+  close $fd
+}
+
+proc curl_download {} {uplevel 1 {
 
   set url [string trim $url]
   regsub "\\$?{x}" $url "\[$xmin-$xmax\]" url
@@ -2352,11 +2387,12 @@ proc download_with_curl {} {uplevel 1 {
   # Download tiles from server
 
   set curl_format !
-  append curl_format " curl_url {%{url}}"
-  append curl_format " curl_status %{response_code}"
-  append curl_format " curl_size %{size_download}"
-  append curl_format " curl_rc %{exitcode}"
-  append curl_format " curl_result {%{errormsg}}"
+  append curl_format " url {%{url}}"
+  append curl_format " status %{response_code}"
+  append curl_format " size %{size_download}"
+  append curl_format " time %{time_starttransfer}"
+  append curl_format " rc %{exitcode}"
+  append curl_format " result {%{errormsg}}"
   append curl_format \n
 
   set curl_exec $::curl
@@ -2387,34 +2423,9 @@ proc download_with_curl {} {uplevel 1 {
   set pipe::exe [file tail $::curl]
   cputi [mc m51 $pipe::pid $pipe::exe]
 
-  lassign {-1 unknown} ::curl_rc ::curl_result
-  fileevent $fd readable "
-    set text {}
-    while {\[gets $fd line\] >= 0} {
-      if {\[info exists pipe::abort\]} continue
-      if {\[string range \$line 0 1\] != {! }} {
-	puts $fdlog \[string trimright \$line \\r\]
-      } else {
-	lmap {name value} \[string range \$line 2 end\] {set \$name \$value}
-	if {!$::curl_echo} continue
-	if {\$curl_rc} {
-	  lappend text \"> error \$curl_rc: \$curl_result\"
-	  set pipe::abort 1
-	} else {
-	  if {${::log.requests}} {lappend text \
-	     \"> GET \$curl_url -> HTTP status \$curl_status, \$curl_size bytes data\"}
-	  if {\$curl_status == 200 || \$curl_status == 404} continue
-	  if {${::tiles.abort}} {set pipe::abort 1; after 0 pipe_kill}
-	}
-      }
-    }
-    if {\$text != {}} {cputs \[join \$text \\n\]}
-    if {\[eof $fd\]} {
-      set pipe::result \$curl_result
-      set pipe::rc \$curl_rc
-      close $fd
-    }"
-  if {![info exists pipe::rc]} {vwait pipe::rc}
+  lassign {-1 unknown} pipe::rc pipe::result
+  fileevent $fd readable [list curl_event $fd $fdlog]
+  if {![info exists pipe::eof]} {vwait pipe::eof}
   lassign [list $pipe::rc $pipe::result] rc result
   cputi [mc m52 $pipe::pid $pipe::exe]
   namespace delete pipe
@@ -2545,7 +2556,7 @@ proc run_render_job {} {
 
     set ::curl_echo [expr {$task == "Map"}]
     set start [clock milliseconds]
-    set rc [download_with_curl]
+    set rc [curl_download]
     set stop [clock milliseconds]
     if {$task == "Hillshading"} {srv_stop}
 
@@ -2859,7 +2870,8 @@ proc run_render_job {} {
 
 proc cancel_render_job {} {
   set ::cancel 1
-  process_kill ovl
+# process_kill srv
+  srv_stop
   pipe_kill
 }
 
