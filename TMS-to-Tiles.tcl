@@ -25,7 +25,7 @@ if {[encoding system] != "utf-8"} {
 package require Tk
 wm withdraw .
 
-set version "2026-03-08"
+set version "2026-04-22"
 set script [file normalize [info script]]
 set title [file tail $script]
 
@@ -108,11 +108,15 @@ Dialog.msg.wrapLength ${dialog.wrapLength}
 Dialog.dtl.wrapLength ${dialog.wrapLength}
 Dialog.msg.font TkDefaultFont
 Dialog.dtl.font TkDefaultFont
+Entry.borderWidth 1
 Entry.highlightThickness 1
 Label.borderWidth 1
 Label.padX 0
 Label.padY 0
 Labelframe.borderWidth 0
+Listbox.exportSelection 0
+Listbox.relief sunken
+Listbox.takeFocus 1
 Scale.highlightThickness 1
 Scale.showValue 0
 Scale.takeFocus 1
@@ -1822,7 +1826,7 @@ labelframe .tmsserver.list -labelanchor nw -text [mc l16]:
 pack .tmsserver.list -expand 1 -fill x -pady 1
 scrollbar .tmsserver.list.scroll -command ".tmsserver.list.values yview"
 listbox .tmsserver.list.values -selectmode single -activestyle none \
-	-takefocus 1 -exportselection 0 -listvariable tms.list -relief sunken \
+	-listvariable tms.list \
 	-width 0 -height [expr min([llength ${tms.list}],12)] \
 	-yscrollcommand ".tmsserver.list.scroll set"
 pack .tmsserver.list.scroll -side right -fill y
