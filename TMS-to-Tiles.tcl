@@ -25,7 +25,7 @@ if {[encoding system] != "utf-8"} {
 package require Tk
 wm withdraw .
 
-set version "2026-05-04"
+set version "2026-05-09"
 set script [file normalize [info script]]
 set title [file tail $script]
 
@@ -792,23 +792,27 @@ if {$magick != ""} {
 
 if {$gm == "" && $magick == ""} {error_message [mc e09] exit}
 
+# Hyperlink to home page
+
+font create hyperfont {*}[font configure TkDefaultFont] -underline 1
+proc hyperlink {widget url} {
+  $widget configure -font hyperfont -fg blue
+  tooltip $widget $url
+  switch $::tcl_platform(os) {
+    "Windows NT" {set exec "exec cmd.exe /C START {} $url"}
+    "Linux"	 {set exec "exec nohup xdg-open $url >/dev/null"}
+    "Darwin"	 {set exec "exec nohup open $url >/dev/null"}
+  }
+  bind $widget <Button-1> "catch {$exec}"
+}
+
 # --- Begin of main window left column
 
 # Title
 
-font create title_font {*}[font configure TkDefaultFont] \
-	-underline 1 -weight bold
-label .title -text $title -font title_font -fg blue
-pack .title -fill x -pady {0 3}
-
-set github https://github.com/JFritzle/TMS-to-Tiles
-tooltip .title $github
-switch $tcl_platform(os) {
-  "Windows NT"	{set exec "exec cmd.exe /C START {} $github"}
-  "Linux"	{set exec "exec nohup xdg-open $github >/dev/null"}
-  "Darwin"	{set exec "exec nohup open $github >/dev/null"}
-}
-bind .title <Button-1> "catch {$exec}"
+label .title -text $title
+pack .title -pady {0 3}
+hyperlink .title https://github.com/JFritzle/TMS-to-Tiles
 
 # Left menu column
 
@@ -829,7 +833,7 @@ pack .server_show_hide -in .l -fill x
 
 # Enable/disable server request logging
 
-checkbutton .log_requests -text [mc x19] -variable log.requests
+checkbutton .log_requests -text [mc x08] -variable log.requests
 pack .log_requests -in .l -fill x
 
 # Show hillshading options
@@ -1171,7 +1175,7 @@ frame .buttons
 button .buttons.continue -text [mc b01] -width 12 -command {set action 1}
 button .buttons.cancel -text [mc b02] -width 12 -command {set action 0}
 pack .buttons.continue .buttons.cancel -side left
-pack .buttons -after .r -anchor n -pady 5
+pack .buttons -after .r -pady 5
 
 focus .buttons.continue
 
@@ -1363,7 +1367,7 @@ entry .shading.simple.value2 -textvariable shading.simple.scale \
 set .shading.simple.value2.minmax {0 10 0.666}
 tooltip .shading.simple.value2 "0 ≤ [mc l85] ≤ 10"
 pack .shading.simple.value1 .shading.simple.label2 .shading.simple.value2 \
-	-side left -anchor w -expand 1 -fill x -padx {5 0}
+	-side left -expand 1 -fill x -padx {5 0}
 
 labelframe .shading.diffuselight -labelanchor w -text [mc l86]:
 entry .shading.diffuselight.value -textvariable shading.diffuselight.angle \
@@ -1374,11 +1378,11 @@ pack .shading.diffuselight.value -side right -padx {3 0}
 
 frame .shading.asy
 foreach i {0 1 2} {
-  label .shading.asy.label$i -anchor w -text [mc l88$i]:
+  label .shading.asy.label$i -text [mc l88$i]:
   entry .shading.asy.value$i -textvariable shading.asy.array($i) \
 	-width 8 -justify right
   grid .shading.asy.label$i -row $i -column 1 -sticky w -padx {0 2}
-  grid .shading.asy.value$i -row $i -column 2 -sticky e
+  grid .shading.asy.value$i -row $i -column 2
 }
 set .shading.asy.value0.minmax {0 1 0.5}
 tooltip .shading.asy.value0 "0 ≤ [mc l880] ≤ 1"
@@ -1503,14 +1507,14 @@ update_shading_window
 
 label .effects.color -text [mc s06]
 
-label .effects.gamma_label -text [mc s07]: -anchor w
+label .effects.gamma_label -text [mc s07]:
 scale .effects.gamma_scale -from 0.01 -to 4.99 -resolution 0.01 \
 	-orient horizontal -variable maps.gamma
 bind .effects.gamma_scale <Shift-ButtonRelease-1> "set maps.gamma 1.00"
 label .effects.gamma_value -textvariable maps.gamma -width 4 \
 	-relief sunken
 
-label .effects.contrast_label -text [mc s08]: -anchor w
+label .effects.contrast_label -text [mc s08]:
 scale .effects.contrast_scale -from 0 -to 254 -resolution 1 \
 	-orient horizontal -variable maps.contrast
 bind .effects.contrast_scale <Shift-ButtonRelease-1> "set maps.contrast 0"
@@ -1518,13 +1522,12 @@ label .effects.contrast_value -textvariable maps.contrast -width 4 \
 	-relief sunken
 
 set row 10
-grid .effects.color -row $row -column 1 -columnspan 3 -sticky we
+grid .effects.color -row $row -column 1 -columnspan 3
 foreach item {gamma contrast} {
   incr row
-  grid .effects.${item}_label -row $row -column 1 -sticky w \
-	-padx {0 2} -pady {0 4}
-  grid .effects.${item}_scale -row $row -column 2 -sticky we
-  grid .effects.${item}_value -row $row -column 3 -sticky e
+  grid .effects.${item}_label -row $row -column 1 -sticky w -padx {0 2}
+  grid .effects.${item}_scale -row $row -column 2
+  grid .effects.${item}_value -row $row -column 3
 }
 
 grid columnconfigure .effects {1 2} -uniform 1
@@ -1545,35 +1548,33 @@ proc reset_effects_values {} {
 
 # Server information
 
-label .server.info -text [mc x01]
-pack .server.info
+# Server title
 
-# Java runtime version
+label .server.title -text "Mapsforge Server"
+pack .server.title
+hyperlink .server.title https://github.com/telemaxx/mapsforgesrv
 
-labelframe .server.jre_version -labelanchor w -text [mc x02]:
-pack .server.jre_version -fill x -pady 1
-label .server.jre_version.value -textvariable java_string
-pack .server.jre_version.value -side right
+# Mapsforge server jar archive
 
-# Mapsforge server version
-
-labelframe .server.version -labelanchor w -text [mc x03]:
-pack .server.version -fill x -pady 1
-label .server.version.value -textvariable server_string
-pack .server.version.value -side right
-
-# Mapsforge server version jar archive
-
-labelframe .server.jar -text [mc x04]:
+labelframe .server.jar -text [mc x01]:
 pack .server.jar -fill x -pady 1
 entry .server.jar.value -textvariable server_jar \
 	-state readonly -takefocus 0 -highlightthickness 0
 pack .server.jar.value -fill x
 
-# Server configuration
+# Mapsforge server version
 
-label .server.config -text [mc x11]
-pack .server.config -pady {5 0}
+labelframe .server.version -labelanchor w -text [mc x02]:
+pack .server.version -fill x -pady 1
+label .server.version.value -text $server_string
+pack .server.version.value -side right
+
+# Java runtime version
+
+labelframe .server.jre_version -labelanchor w -text [mc x03]:
+pack .server.jre_version -fill x -pady 1
+label .server.jre_version.value -text $java_string
+pack .server.jre_version.value -side right
 
 # Rendering engine
 
@@ -1593,7 +1594,7 @@ foreach item $engines \
 	{set width [expr max([font measure TkTextFont $item],$width)]}
 set width [expr $width/[font measure TkTextFont "0"]+1]
 
-labelframe .server.engine -text [mc x12]:
+labelframe .server.engine -text [mc x04]:
 combobox .server.engine.values -width $width \
 	-validate key -validatecommand {return 0} \
 	-textvariable rendering.engine -values $engines
@@ -1606,7 +1607,7 @@ if {[llength $engines] > 1} {
 
 # Server interface
 
-labelframe .server.interface -labelanchor w -text [mc x13]:
+labelframe .server.interface -labelanchor w -text [mc x05]:
 combobox .server.interface.values -width 10 \
 	-textvariable tcp.interface -values {localhost all}
 if {[.server.interface.values current] < 0} \
@@ -1616,21 +1617,21 @@ pack .server.interface.values -side right -padx {3 0}
 
 # Server TCP port number
 
-labelframe .server.port -labelanchor w -text [mc x15]:
+labelframe .server.port -labelanchor w -text [mc x06]:
 entry .server.port.value -textvariable tcp.port \
 	-width 6 -justify center
 set .server.port.value.minmax "1024 65535 $tcp_port"
-tooltip .server.port.value "1024 ≤ [mc x15] ≤ 65535"
+tooltip .server.port.value "1024 ≤ [mc x06] ≤ 65535"
 pack .server.port -fill x -pady 1
 pack .server.port.value -side right -padx {3 0}
 
 # Maximum size of TCP listening queue
 
-labelframe .server.maxconn -labelanchor w -text [mc x16]:
+labelframe .server.maxconn -labelanchor w -text [mc x07]:
 entry .server.maxconn.value -textvariable tcp.maxconn \
 	-width 6 -justify center
 set .server.maxconn.value.minmax {0 {} 1024}
-tooltip .server.maxconn.value "[mc x16] ≥ 0"
+tooltip .server.maxconn.value "[mc x07] ≥ 0"
 pack .server.maxconn -fill x -pady 1
 pack .server.maxconn.value -side right -padx {3 0}
 
@@ -1667,7 +1668,7 @@ pack .tmsserver.url.value -fill x
 
 label .tmsserver.xmpl -anchor w -text [string cat [mc l12] ": "\
   {http[s]://host[:port][/path]/{z}/{x}/{y}.png[?query]}]
-pack .tmsserver.xmpl -anchor w -pady 1 -fill x
+pack .tmsserver.xmpl -pady 1 -fill x
 
 # Tooltip for example URL
 
@@ -1858,8 +1859,8 @@ foreach event {Enter Leave Control-plus Control-minus \
 	Control-KP_Add Control-KP_Subtract} \
 	{bind $wtest <$event> [bind .tmsserver <$event>]}
 
-label $wtest.title -padx 1 -bd 0 -anchor w -text [mc l181]:
-grid $wtest.title -row 1 -column 1 -sticky we
+label $wtest.title -padx 1 -bd 0 -text [mc l181]:
+grid $wtest.title -row 1 -column 1 -sticky w
 text $wtest.text -padx 1 -bd 1 -relief sunken -bg $colorWindow -wrap word
 grid $wtest.text -row 2 -column 1 -sticky we
 label $wtest.image -padx 1 -bd 1 -relief sunken -image ""
@@ -2035,8 +2036,9 @@ proc font_size_incr {incr} {
   if {$size < 0} {set size [expr round(-$size/[tk scaling])]}
   incr size $incr
   if {$size < 5 || $size > 20} return
-  set fonts {TkDefaultFont TkTextFont TkFixedFont TkTooltipFont title_font}
+  set fonts {TkDefaultFont TkTextFont TkFixedFont TkTooltipFont}
   foreach item $fonts {font configure $item -size $size}
+  font configure hyperfont -size [expr 1+$size]
   set ::font.size $size
   set height [expr [winfo reqheight .title]-2]
 
@@ -2046,6 +2048,7 @@ proc font_size_incr {incr} {
 	{$item configure -format [list svg -scale $scale]}
   } else {
     set size [expr round(($height+3)*0.6)]
+    set padx [expr round($size*0.3)]
     switch $::tcl_platform(os) {
       "Windows NT" {set pady 0.1}
       "Linux"	   -
