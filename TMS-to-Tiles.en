@@ -32,9 +32,9 @@ c02	"Configure hillshading server"
 c03	"Configure hillshading"
 c04	"Color post-processing"
 
-s06	"Color post-processing"
-s07	"Gamma correction"
-s08	"Contrast stretching"
+s08	"Color post-processing"
+s09	"Gamma correction"
+s10	"Contrast stretching"
 
 x01	"Server's Java archive"
 x02	"Version Mapsforge server"

@@ -25,7 +25,7 @@ if {[encoding system] != "utf-8"} {
 package require Tk
 wm withdraw .
 
-set version "2026-05-09"
+set version "2026-08-13"
 set script [file normalize [info script]]
 set title [file tail $script]
 
@@ -120,6 +120,8 @@ Listbox.takeFocus 1
 Scale.highlightThickness 1
 Scale.showValue 0
 Scale.takeFocus 1
+TCombobox.validate key
+TCombobox.validateCommand "{return 0}"
 Tooltip*Label.padX 2
 Tooltip*Label.padY 2
 } {eval option add *$item $value}
@@ -661,7 +663,7 @@ if {$rc || $java_version == 0} \
 
 # Check minimum required Java version
 
-set java_version_min 11
+set java_version_min 17
 if {$java_version < $java_version_min} \
   {error_message [mc e07 Java $java_string $java_version_min] exit}
 
@@ -871,8 +873,7 @@ pack .r -anchor nw
 
 labelframe .xyrange -labelanchor w -text [mc l21]:
 pack .xyrange -in .r -fill x -pady 1
-combobox .xyrange.values -width 24 -values [list [mc v22] [mc v23]] \
-	-validate key -validatecommand {return 0}
+combobox .xyrange.values -width 24 -values [list [mc v22] [mc v23]]
 if {[info exists xyrange.mode]} {.xyrange.values current ${::xyrange.mode}}
 if {[.xyrange.values current] < 0} {.xyrange.values current 0}
 pack .xyrange.values -side right
@@ -1348,7 +1349,6 @@ set list {stdasy simplasy hiresasy}
 if {$server_version >= 230001} {lappend list adaptasy}
 lappend list simple diffuselight
 combobox .shading.algorithm.values -width 12 \
-	-validate key -validatecommand {return 0} \
 	-textvariable shading.algorithm -values $list
 if {[.shading.algorithm.values current] < 0} \
 	{.shading.algorithm.values current 0}
@@ -1480,8 +1480,8 @@ foreach item $shading_widgets_int {
 }
 
 foreach item [concat $shading_widgets_float $shading_widgets_int] {
-  bind $item <Shift-ButtonRelease-1> \
-	{set [%W cget -textvariable] [lindex ${::%W.minmax} 2]}
+  bind $item <Shift-Button-1> \
+	{set [%W cget -textvariable] [lindex ${::%W.minmax} 2]; break}
 }
 
 # Save hillshading settings to folder ini_folder
@@ -1503,27 +1503,28 @@ update_shading_window
 # --- End of hillshading
 # --- Begin of visual rendering effects
 
+set row 0
+
 # Gamma correction & Contrast-stretching
 
-label .effects.color -text [mc s06]
+label .effects.color -text [mc s08]
 
-label .effects.gamma_label -text [mc s07]:
-scale .effects.gamma_scale -from 0.01 -to 4.99 -resolution 0.01 \
-	-orient horizontal -variable maps.gamma
-bind .effects.gamma_scale <Shift-ButtonRelease-1> "set maps.gamma 1.00"
-label .effects.gamma_value -textvariable maps.gamma -width 4 \
-	-relief sunken
+label .effects.gamma_label -text [mc s09]:
+scale .effects.gamma_scale -from 0.01 -to 4.99 -resolution 0.01
+bind .effects.gamma_scale <Shift-Button-1> "%W set 1.00; break"
+label .effects.gamma_value
 
-label .effects.contrast_label -text [mc s08]:
-scale .effects.contrast_scale -from 0 -to 254 -resolution 1 \
-	-orient horizontal -variable maps.contrast
-bind .effects.contrast_scale <Shift-ButtonRelease-1> "set maps.contrast 0"
-label .effects.contrast_value -textvariable maps.contrast -width 4 \
-	-relief sunken
+label .effects.contrast_label -text [mc s10]:
+scale .effects.contrast_scale -from 0 -to 254 -resolution 1
+bind .effects.contrast_scale <Shift-Button-1> "%W set 0; break"
+label .effects.contrast_value
 
-set row 10
+incr row
 grid .effects.color -row $row -column 1 -columnspan 3
 foreach item {gamma contrast} {
+  .effects.${item}_scale configure -orient horizontal -variable maps.${item}
+  .effects.${item}_value configure -textvariable maps.${item} -width 4 \
+	-relief sunken
   incr row
   grid .effects.${item}_label -row $row -column 1 -sticky w -padx {0 2}
   grid .effects.${item}_scale -row $row -column 2
@@ -1579,11 +1580,7 @@ pack .server.jre_version.value -side right
 # Rendering engine
 
 set pattern marlin-*-Unsafe-OpenJDK
-if {$java_version < 17} {
-  append pattern 11
-} else  {
-  append pattern 1\[17\]
-}
+append pattern 1\[17\]
 set engines [glob -nocomplain -tails -type f \
 	-directory [file dirname $server_jar] $pattern.jar]
 lappend engines (default)
@@ -1596,7 +1593,6 @@ set width [expr $width/[font measure TkTextFont "0"]+1]
 
 labelframe .server.engine -text [mc x04]:
 combobox .server.engine.values -width $width \
-	-validate key -validatecommand {return 0} \
 	-textvariable rendering.engine -values $engines
 if {[.server.engine.values current] < 0} \
 	{.server.engine.values current 0}
@@ -1650,8 +1646,8 @@ proc reset_server_values {} {
 
 foreach widget {.server.port.value .server.maxconn.value} {
   $widget configure -validate all -vcmd {validate_number %W %V %P " " int}
-  bind $widget <Shift-ButtonRelease-1> \
-	{set [%W cget -textvariable] [lindex ${::%W.minmax} 2]}
+  bind $widget <Shift-Button-1> \
+	{set [%W cget -textvariable] [lindex ${::%W.minmax} 2]; break}
 }
 
 # --- End of server settings
@@ -1753,8 +1749,8 @@ proc tmsserver_test_z {value} {
     set ::$widget.minmax "0 $tmax [set ::$txtvar]"
     $widget configure -textvariable $txtvar \
 	-validate all -vcmd {validate_number %W %V %P " " int}
-    bind $widget <Shift-ButtonRelease-1> \
-	{set [%W cget -textvariable] [lindex ${::%W.minmax} 2]}
+    bind $widget <Shift-Button-1> \
+	{set [%W cget -textvariable] [lindex ${::%W.minmax} 2]; break}
   }
 }
 .tmsserver.grid.z.scale configure -command tmsserver_test_z
@@ -1834,8 +1830,8 @@ listbox .tmsserver.list.values -selectmode single -activestyle none \
 pack .tmsserver.list.scroll -side right -fill y
 pack .tmsserver.list.values -side left -fill both -expand 1
 
-bind .tmsserver.list.values <ButtonRelease-1> {
-  set tms.url [lindex ${tms.list} [%W curselection]]
+bind .tmsserver.list.values <Button-1> {
+  set tms.url [lindex ${tms.list} [%W curselection]; break]
 }
 bind .tmsserver.list.values <Delete> {
   %W delete [%W curselection]
@@ -2492,7 +2488,14 @@ proc curl_download {} {uplevel 1 {
     while {$xtile <= $xmax} {
       incr count
       set tile ${prefix}$zoom.$xtile.$ytile.$suffix
-      if {[file exists $tile]} {incr valid}
+      if {[file exists $tile]} {
+	incr valid
+	if {![info exists size.$suffix]} {
+	  upvar ::use.magick use_magick
+	  set exe [set ::$use_magick]
+	  catch {exec $exe identify -format %w $tile\[0\]} size.$suffix
+	}
+      }
       incr xtile
     }
     incr ytile
@@ -2580,13 +2583,14 @@ proc run_render_job {} {
 
     if {$task == "Map"} {set suffix img}
     if {$task == "Hillshading"} {set suffix ovl}
+    unset -nocomplain size.$suffix
 
     # Url
 
     if {$task == "Map"} {set url ${::tms.url}}
     if {$task == "Hillshading"} {
       set url http://127.0.0.1:${::tcp.port}/{z}/{x}/{y}.png?task=Hillshading
-      if {$::tile_size != 256} {append url &tileRenderSize=$::tile_size}
+      if {${size.img} != 256} {append url &tileRenderSize=${size.img}}
     }
     cputs "[mc m70 $url] ...\n"
 
@@ -2662,9 +2666,12 @@ proc run_render_job {} {
 
   # Fill missing tiles by white tile
 
+  set size ${size.img}
+  set size "${size}x${size}"
+
   set void $::tmpdir/void.png
-  if {$use_magick == "gm"}	{exec $exe convert -size 256x256 xc:white $void}
-  if {$use_magick == "magick"}	{exec $exe -size 256x256 canvas:white $void}
+  if {$use_magick == "gm"}	{exec $exe convert -size $size xc:white $void}
+  if {$use_magick == "magick"}	{exec $exe -size $size canvas:white $void}
 
   while {1} {
 

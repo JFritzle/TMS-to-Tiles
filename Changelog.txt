@@ -1,3 +1,11 @@
+2026-08-13
+
+- Support for Mapsforge Server 0.29.0.0 or newer
+  Note: Java runtime environment (JRE) version 17 or newer required
+- Updated README
+- Query hillshading tiles same size as maps server tiles size
+- Minor script optimizations
+
 2026-05-09
 
 - Fixed script aborting with Tcl/Tk version 8.6

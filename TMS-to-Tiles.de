@@ -32,9 +32,9 @@ c02	"Schummerungserver konfigurieren"
 c03	"Schummerung konfigurieren"
 c04	"Farbe nachbearbeiten"
 
-s06	"Farbe nachbearbeiten"
-s07	"Gammakorrektur"
-s08	"Kontrastspreizung"
+s08	"Farbe nachbearbeiten"
+s09	"Gammakorrektur"
+s10	"Kontrastspreizung"
 
 x01	"Java-Archiv des Servers"
 x02	"Version Mapsforge Server"

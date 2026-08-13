@@ -32,9 +32,9 @@ c02	"Configurer le serveur de l'ombrage"
 c03	"Configurer l'ombrage du relief"
 c04	"Post-traitement des couleurs"
 
-s06	"Post-traitement des couleurs"
-s07	"Correction gamma"
-s08	"Étendre le contraste"
+s08	"Post-traitement des couleurs"
+s09	"Correction gamma"
+s10	"Étendre le contraste"
 
 x01	"Archive Java du serveur"
 x02	"Version du serveur Mapsforge"
