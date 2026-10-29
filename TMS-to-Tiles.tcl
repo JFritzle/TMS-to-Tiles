@@ -3,7 +3,7 @@
 
 # Important:
 # - Only new "tasks" server type supported!
-# - At least Java version 11 required!
+# - At least Java version 17 required!
 
 # Notes:
 # - Additional user settings file is mandatory!
@@ -25,7 +25,7 @@ if {[encoding system] != "utf-8"} {
 package require Tk
 wm withdraw .
 
-set version "2026-08-13"
+set version "2026-10-29"
 set script [file normalize [info script]]
 set title [file tail $script]
 
@@ -592,6 +592,8 @@ proc cputw {text} {cputs "\[+++\] $text"}
 cputw [mc m51 [pid] [file tail [info nameofexecutable]]]
 cputw "Tcl/Tk version $tcl_patchLevel"
 cputw "Script '[file tail $script]' version $version"
+cputw "OS $tcl_platform(os) version $tcl_platform(osVersion)\
+	($tcl_platform(machine))"
 
 # Show error message
 
@@ -2136,13 +2138,17 @@ proc process_start {command process} {
     set mark \[[string toupper $process]\]
     cputi "$m51 $mark"
 
-   proc fevent {} {uplevel #0 {
-      set text {}
-      while {[gets $fd line] >= 0} {lappend text "$mark $line"}
-      if {$text != {}} {cputs [join $text \n]}
+    set eofmsg m52
+    proc fevent {} {uplevel #0 {
+      set text ""
+      while {[gets $fd line] >= 0} {append text "$mark $line\n"}
+      if {$text != ""} {
+	cputs [string range $text 0 end-1]
+	thread::send $sid update
+      }
       if {![eof $fd]} return
       fileevent $fd readable {}
-      cputi "$m52 $mark"
+      cputi "[set $eofmsg] $mark"
       thread::send -async $sid "
 	namespace delete $process
 	set $process.eof 1
@@ -2163,7 +2169,7 @@ proc process_kill {process} {
   if {![process_running $process]} return
   namespace upvar $process tid tid pid pid
 
-  thread::send $tid {proc fevent {} [regsub m52 [info body fevent] m53]}
+  thread::send -async -head $tid {set eofmsg m53}
 
   if {$::tcl_platform(os) == "Windows NT"} {
     catch {exec TASKKILL /F /PID $pid /T}
